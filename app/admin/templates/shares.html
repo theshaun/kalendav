@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Shares{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/admin/calendars" class="text-blue-600 hover:underline">&larr; Back to Calendars</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h1 class="text-2xl font-bold text-gray-800 mb-2">{{ calendar.name }}</h1>
+    <p class="text-gray-600">Owner: {{ calendar.user.username }}</p>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">Add Share</h2>
+    
+    <form action="/admin/calendars/{{ calendar.id }}/shares" method="post" class="flex gap-4">
+        <select name="user_id" required class="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Select User</option>
+            {% for u in users %}
+            {% if u.id != calendar.user_id %}
+            <option value="{{ u.id }}">{{ u.username }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        
+        <select name="permission" required class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="read_only">Read Only</option>
+            <option value="read_write">Read & Write</option>
+        </select>
+        
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+            Add
+        </button>
+    </form>
+</div>
+
+<div class="bg-white rounded-lg shadow overflow-hidden">
+    <h2 class="text-lg font-semibold text-gray-800 p-6 border-b">Current Shares</h2>
+    
+    {% if calendar.shares %}
+    <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+            <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Permission</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+            {% for share in calendar.shares %}
+            <tr>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {{ share.user.username }}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {% if share.permission.value == 'read_write' %}bg-green-100 text-green-800{% else %}bg-blue-100 text-blue-800{% endif %}">
+                        {{ share.permission.value }}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <form action="/admin/shares/{{ share.id }}/delete" method="post" class="inline">
+                        <button type="submit" class="text-red-600 hover:text-red-900" onclick="return confirm('Remove this share?')">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="p-6 text-gray-500">No shares yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

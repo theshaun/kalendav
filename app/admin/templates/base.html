@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} - CalDAV Server</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-blue-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex justify-between items-center">
+                <a href="/admin" class="text-xl font-bold">KalenDAV</a>
+                <div class="flex space-x-4">
+                    <a href="/admin/users" class="hover:underline">Users</a>
+                    <a href="/admin/calendars" class="hover:underline">Calendars</a>
+                    <a href="/admin/api-keys" class="hover:underline">API Keys</a>
+                    <span class="text-blue-200">|</span>
+                    <span>{{ user.username }}</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <main class="container mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

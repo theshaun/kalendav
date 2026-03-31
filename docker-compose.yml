@@ -1,0 +1,28 @@
+services:
+  caldav:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://kalendav:kalendav@db:5432/kalendav
+      - SECRET_KEY=your-secret-key-change-in-production
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=admin
+    depends_on:
+      - db
+    volumes:
+      - ./app:/app/app
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=kalendav
+      - POSTGRES_PASSWORD=kalendav
+      - POSTGRES_DB=kalendav
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
