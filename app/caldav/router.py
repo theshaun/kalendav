@@ -27,6 +27,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.api_route("/", methods=["OPTIONS"])
+@router.api_route("/{path:path}", methods=["OPTIONS"])
+async def handle_options(request: Request, path: str = ""):
+    return Response(
+        status_code=200,
+        headers={
+            "DAV": "1, 2, 3, calendar-access, calendar-schedule",
+            "Allow": "OPTIONS, PROPFIND, PROPPATCH, GET, PUT, DELETE, REPORT, MKCALENDAR",
+            "Content-Length": "0",
+        },
+    )
+
+
 def check_calendar_permission(user: User, calendar: Calendar, require_write: bool = False) -> bool:
     if calendar.user_id == user.id:
         return True
@@ -62,6 +75,7 @@ async def get_calendar_with_permission(
     return calendar
 
 
+@router.api_route("/", methods=["PROPFIND", "PROPPATCH", "MKCALENDAR"])
 @router.api_route("/{path:path}", methods=["PROPFIND", "PROPPATCH", "MKCALENDAR"])
 async def caldav_webdav(
     request: Request,
@@ -82,6 +96,7 @@ async def caldav_webdav(
     raise HTTPException(status_code=405)
 
 
+@router.api_route("/", methods=["GET", "PUT", "DELETE", "REPORT"])
 @router.api_route("/{path:path}", methods=["GET", "PUT", "DELETE", "REPORT"])
 async def caldav_resources(
     request: Request,
@@ -125,6 +140,45 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
             f"/dav/principals/{user.username}/",
         )
     
+    elif len(path_parts) >= 3 and path_parts[1] == "calendars":
+        try:
+            cal_id = int(path_parts[2])
+        except ValueError:
+            raise HTTPException(status_code=404)
+        
+        calendar = await get_calendar_with_permission(cal_id, user, db)
+        if not calendar:
+            raise HTTPException(status_code=404)
+        
+        add_calendar_response(
+            multistatus,
+            f"/dav/{user.username}/calendars/{cal_id}/",
+            calendar.id,
+            calendar.name,
+            calendar.description,
+            calendar.color or "#3B82F6",
+        )
+        
+        if depth == "1":
+            result = await db.execute(
+                select(Event).where(Event.calendar_id == calendar.id)
+            )
+            events = result.scalars().all()
+            
+            for event in events:
+                href = f"/dav/{user.username}/calendars/{cal_id}/{event.uid}.ics"
+                etag = hashlib.md5(event.raw_ics.encode()).hexdigest()
+                add_event_response(
+                    multistatus,
+                    href,
+                    event.uid,
+                    event.summary or event.uid,
+                    event.dtstart,
+                    event.dtend,
+                    etag,
+                    event.raw_ics,
+                )
+    
     elif len(path_parts) >= 2 and path_parts[1] == "calendars":
         result = await db.execute(
             select(Calendar)
@@ -157,25 +211,6 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
                 cal.color or "#3B82F6",
             )
     
-    elif len(path_parts) >= 4 and path_parts[1] == "calendars":
-        try:
-            cal_id = int(path_parts[2])
-        except ValueError:
-            raise HTTPException(status_code=404)
-        
-        calendar = await get_calendar_with_permission(cal_id, user, db)
-        if not calendar:
-            raise HTTPException(status_code=404)
-        
-        add_calendar_response(
-            multistatus,
-            f"/dav/{user.username}/calendars/{cal_id}/",
-            calendar.id,
-            calendar.name,
-            calendar.description,
-            calendar.color or "#3B82F6",
-        )
-    
     return FastAPIResponse(
         content=xml_to_string(multistatus),
         media_type="application/xml; charset=utf-8",
@@ -185,7 +220,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
 
 
 async def handle_proppatch(request: Request, path_parts: list, user: User, db: AsyncSession):
-    if len(path_parts) < 4 or path_parts[1] != "calendars":
+    if len(path_parts) < 3 or path_parts[1] != "calendars":
         raise HTTPException(status_code=404)
     
     try:
@@ -209,10 +244,10 @@ async def handle_proppatch(request: Request, path_parts: list, user: User, db: A
 
 
 async def handle_mkcalendar(request: Request, path_parts: list, user: User, db: AsyncSession):
-    if len(path_parts) < 4 or path_parts[1] != "calendars":
+    if len(path_parts) < 3 or path_parts[1] != "calendars":
         raise HTTPException(status_code=400)
     
-    calendar_name = path_parts[3] if len(path_parts) > 3 else "New Calendar"
+    calendar_name = path_parts[2] if len(path_parts) > 2 else "New Calendar"
     
     new_calendar = Calendar(
         user_id=user.id,
@@ -438,7 +473,7 @@ async def handle_delete(path_parts: list, user: User, db: AsyncSession):
 
 
 async def handle_report(request: Request, path_parts: list, body: bytes, user: User, db: AsyncSession):
-    if len(path_parts) < 4 or path_parts[1] != "calendars":
+    if len(path_parts) < 3 or path_parts[1] != "calendars":
         raise HTTPException(status_code=404)
     
     try:

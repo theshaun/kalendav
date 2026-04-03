@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     admin_user: str = "admin"
     admin_password: str = "admin"
     
+    base_uri: str = "http://localhost:8000"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

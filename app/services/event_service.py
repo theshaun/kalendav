@@ -1,8 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from app.models import Event
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload
+from app.models import Event, Calendar, CalendarShare
+from app.models.share import SharePermission
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Sequence
+import uuid
 
 
 class EventService:
@@ -11,7 +14,7 @@ class EventService:
 
     async def get_by_id(self, event_id: int) -> Optional[Event]:
         result = await self.db.execute(
-            select(Event).where(Event.id == event_id)
+            select(Event).options(selectinload(Event.calendar)).where(Event.id == event_id)
         )
         return result.scalar_one_or_none()
 
@@ -28,7 +31,7 @@ class EventService:
         calendar_id: int,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
-    ) -> List[Event]:
+    ) -> Sequence[Event]:
         query = select(Event).where(Event.calendar_id == calendar_id)
 
         if start:
@@ -37,7 +40,166 @@ class EventService:
             query = query.where(Event.dtend <= end)
 
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
+
+    async def get_user_accessible_calendars(self, user_id: int) -> List[int]:
+        owned = await self.db.execute(
+            select(Calendar.id).where(Calendar.user_id == user_id)
+        )
+        calendar_ids = [c[0] for c in owned.fetchall()]
+        
+        shared = await self.db.execute(
+            select(CalendarShare.calendar_id).where(
+                CalendarShare.user_id == user_id,
+                CalendarShare.permission.in_([SharePermission.READ, SharePermission.WRITE, SharePermission.ADMIN])
+            )
+        )
+        calendar_ids.extend([s[0] for s in shared.fetchall()])
+        
+        return list(set(calendar_ids))
+
+    async def get_writable_calendars(self, user_id: int) -> List[int]:
+        owned = await self.db.execute(
+            select(Calendar.id).where(Calendar.user_id == user_id)
+        )
+        calendar_ids = [c[0] for c in owned.fetchall()]
+        
+        shared = await self.db.execute(
+            select(CalendarShare.calendar_id).where(
+                CalendarShare.user_id == user_id,
+                CalendarShare.permission.in_([SharePermission.WRITE, SharePermission.ADMIN])
+            )
+        )
+        calendar_ids.extend([s[0] for s in shared.fetchall()])
+        
+        return list(set(calendar_ids))
+
+    async def get_events_for_user(
+        self,
+        user_id: int,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> Sequence[Event]:
+        calendar_ids = await self.get_user_accessible_calendars(user_id)
+        if not calendar_ids:
+            return []
+        
+        query = select(Event).options(
+            selectinload(Event.calendar).selectinload(Calendar.user)
+        ).where(Event.calendar_id.in_(calendar_ids))
+        
+        if start:
+            query = query.where(Event.dtend >= start)
+        if end:
+            query = query.where(Event.dtstart <= end)
+        
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def can_access_event(self, event_id: int, user_id: int) -> bool:
+        event = await self.get_by_id(event_id)
+        if not event:
+            return False
+        
+        accessible_ids = await self.get_user_accessible_calendars(user_id)
+        return event.calendar_id in accessible_ids
+
+    async def can_edit_event(self, event_id: int, user_id: int) -> bool:
+        event = await self.get_by_id(event_id)
+        if not event:
+            return False
+        
+        writable_ids = await self.get_writable_calendars(user_id)
+        return event.calendar_id in writable_ids
+
+    async def create_event(
+        self,
+        calendar_id: int,
+        summary: str,
+        dtstart: datetime,
+        dtend: Optional[datetime] = None,
+        description: Optional[str] = None,
+        location: Optional[str] = None,
+        rrule: Optional[str] = None,
+        is_all_day: bool = False,
+    ) -> Event:
+        uid = str(uuid.uuid4())
+        
+        from app.caldav.ics_parser import generate_ics
+        raw_ics = generate_ics(
+            uid=uid,
+            summary=summary,
+            dtstart=dtstart,
+            dtend=dtend,
+            description=description,
+            location=location,
+            rrule=rrule,
+            is_all_day=is_all_day,
+        )
+        
+        event = Event(
+            calendar_id=calendar_id,
+            uid=uid,
+            summary=summary,
+            description=description,
+            dtstart=dtstart,
+            dtend=dtend,
+            location=location,
+            rrule=rrule,
+            raw_ics=raw_ics,
+            is_all_day=is_all_day,
+        )
+        self.db.add(event)
+        await self.db.commit()
+        await self.db.refresh(event)
+        return event
+
+    async def update_event(
+        self,
+        event_id: int,
+        summary: Optional[str] = None,
+        description: Optional[str] = None,
+        dtstart: Optional[datetime] = None,
+        dtend: Optional[datetime] = None,
+        location: Optional[str] = None,
+        rrule: Optional[str] = None,
+        is_all_day: Optional[bool] = None,
+    ) -> Optional[Event]:
+        event = await self.get_by_id(event_id)
+        if not event:
+            return None
+
+        if summary is not None:
+            event.summary = summary
+        if description is not None:
+            event.description = description
+        if dtstart is not None:
+            event.dtstart = dtstart
+        if dtend is not None:
+            event.dtend = dtend
+        if location is not None:
+            event.location = location
+        if rrule is not None:
+            event.rrule = rrule
+        if is_all_day is not None:
+            event.is_all_day = is_all_day
+
+        from app.caldav.ics_parser import generate_ics
+        event.raw_ics = generate_ics(
+            uid=event.uid,
+            summary=event.summary or "",
+            dtstart=event.dtstart,
+            dtend=event.dtend,
+            description=event.description,
+            location=event.location,
+            rrule=event.rrule,
+            is_all_day=event.is_all_day,
+        )
+
+        event.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(event)
+        return event
 
     async def create(
         self,

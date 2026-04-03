@@ -1,5 +1,5 @@
-from icalendar import Calendar, Event as ICalEvent
-from datetime import datetime, timedelta
+from icalendar import Calendar, Event as ICalEvent, vDate, vDatetime
+from datetime import datetime, timedelta, date
 from typing import Optional, Tuple
 from dateutil import parser as date_parser
 import uuid
@@ -52,20 +52,30 @@ def generate_ics(
     description: Optional[str] = None,
     location: Optional[str] = None,
     rrule: Optional[str] = None,
+    is_all_day: bool = False,
 ) -> str:
     cal = Calendar()
-    cal.add("prodid", "-//CalDAV Server//EN")
+    cal.add("prodid", "-//KalenDAV Server//EN")
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")
     
     event = ICalEvent()
     event.add("uid", uid)
-    event.add("dtstart", dtstart)
-    if dtend:
-        event.add("dtend", dtend)
+    
+    if is_all_day:
+        start_date = dtstart.date() if isinstance(dtstart, datetime) else dtstart
+        event.add("dtstart", vDate(start_date))
+        if dtend:
+            end_date = dtend.date() if isinstance(dtend, datetime) else dtend
+            event.add("dtend", vDate(end_date))
     else:
-        event.add("dtend", dtstart + timedelta(hours=1))
+        event.add("dtstart", dtstart)
+        if dtend:
+            event.add("dtend", dtend)
+        else:
+            event.add("dtend", dtstart + timedelta(hours=1))
+    
     event.add("dtstamp", datetime.utcnow())
     event.add("summary", summary)
     
@@ -82,9 +92,46 @@ def generate_ics(
     return cal.to_ical().decode("utf-8")
 
 
+def build_rrule(
+    freq: str,
+    interval: int = 1,
+    count: Optional[int] = None,
+    until: Optional[datetime] = None,
+    byday: Optional[list] = None,
+) -> Optional[str]:
+    if freq == "none":
+        return None
+    
+    freq_map = {
+        "daily": "DAILY",
+        "weekly": "WEEKLY",
+        "monthly": "MONTHLY",
+        "yearly": "YEARLY",
+    }
+    
+    freq_val = freq_map.get(freq.lower())
+    if not freq_val:
+        return None
+    
+    parts = [f"FREQ={freq_val}"]
+    
+    if interval > 1:
+        parts.append(f"INTERVAL={interval}")
+    
+    if count:
+        parts.append(f"COUNT={count}")
+    elif until:
+        parts.append(f"UNTIL={until.strftime('%Y%m%dT%H%M%SZ')}")
+    
+    if byday and freq.lower() == "weekly":
+        parts.append(f"BYDAY={','.join(byday)}")
+    
+    return ";".join(parts)
+
+
 def generate_calendar_ics(events: list, calendar_name: str = "Calendar") -> str:
     cal = Calendar()
-    cal.add("prodid", "-//CalDAV Server//EN")
+    cal.add("prodid", "-//KalenDAV Server//EN")
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")

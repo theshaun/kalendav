@@ -16,6 +16,23 @@
     </div>
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ events_count }} Events</h2>
+        <a href="/admin/calendar" class="text-blue-600 dark:text-blue-400 hover:underline">View Calendar</a>
+    </div>
+</div>
+
+<div class="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Quick Links</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-2">CalDAV Connection</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Connect your calendar client to:</p>
+            <code class="block mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-800 dark:text-gray-200">{{ base_uri }}/dav/{{ user.username }}/</code>
+        </div>
+        <div>
+            <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-2">ICS Feeds</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Access calendars via ICS:</p>
+            <code class="block mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-800 dark:text-gray-200">{{ base_uri }}/ics/{calendar_id}?api_key=xxx</code>
+        </div>
     </div>
 </div>
 {% endblock %}

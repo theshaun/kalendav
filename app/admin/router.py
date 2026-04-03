@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -16,8 +16,11 @@ from app.auth.basic import hash_password, verify_password
 from app.auth.basic import generate_api_key, hash_api_key
 from app.auth.session_deps import get_current_user_session, get_current_user_session_optional
 from app.auth.session import set_session_cookie, clear_session_cookie
+from app.services.event_service import EventService
+from app.caldav.ics_parser import build_rrule
+from app.config import settings
 from fastapi.templating import Jinja2Templates
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from typing import Optional
 
@@ -97,6 +100,7 @@ async def admin_dashboard(
             "users_count": len(users),
             "calendars_count": len(calendars),
             "events_count": len(events),
+            "base_uri": settings.base_uri,
         },
     )
 
@@ -509,6 +513,7 @@ async def user_dashboard(
             "calendars_count": len(calendars),
             "api_keys_count": len(api_keys),
             "events_count": events_count,
+            "base_uri": settings.base_uri,
         },
     )
 
@@ -798,3 +803,321 @@ async def user_delete_share(
         return RedirectResponse(url=f"/admin/my-calendars/{calendar_id}/shares", status_code=303)
     
     raise HTTPException(status_code=404)
+
+
+# ============== Web Calendar ==============
+
+@router.get("/calendar", response_class=HTMLResponse)
+async def web_calendar(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    result = await db.execute(
+        select(Calendar).where(Calendar.user_id == user.id)
+    )
+    owned_calendars = result.scalars().all()
+    
+    result = await db.execute(
+        select(CalendarShare)
+        .options(selectinload(CalendarShare.calendar))
+        .where(
+            CalendarShare.user_id == user.id,
+            CalendarShare.permission.in_([SharePermission.READ, SharePermission.WRITE, SharePermission.ADMIN])
+        )
+    )
+    shares = result.scalars().all()
+    
+    writable_ids = set(c.id for c in owned_calendars)
+    for share in shares:
+        if share.permission in [SharePermission.WRITE, SharePermission.ADMIN]:
+            writable_ids.add(share.calendar_id)
+    
+    all_calendars = list(owned_calendars) + [s.calendar for s in shares if s.calendar_id not in [c.id for c in owned_calendars]]
+    
+    return templates.TemplateResponse(
+        "calendar.html",
+        {
+            "request": request,
+            "user": user,
+            "calendars": all_calendars,
+            "writable_calendar_ids": list(writable_ids),
+        },
+    )
+
+
+@router.get("/calendar/events", response_class=JSONResponse)
+async def get_calendar_events(
+    start: str,
+    end: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    
+    try:
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)
+    
+    events = await event_service.get_events_for_user(user.id, start_dt, end_dt)
+    
+    events_data = []
+    for event in events:
+        event_data = {
+            "id": event.id,
+            "title": event.summary or "(No title)",
+            "start": event.dtstart.isoformat(),
+            "end": event.dtend.isoformat() if event.dtend else (event.dtstart + timedelta(hours=1)).isoformat(),
+            "allDay": event.is_all_day,
+            "calendarId": event.calendar_id,
+            "calendarName": event.calendar.name if event.calendar else "",
+            "calendarColor": event.calendar.color if event.calendar else "#3B82F6",
+            "location": event.location,
+            "description": event.description,
+        }
+        if event.rrule:
+            event_data["rrule"] = event.rrule
+        events_data.append(event_data)
+    
+    return JSONResponse(content=events_data)
+
+
+@router.get("/calendar/events/new", response_class=HTMLResponse)
+async def new_event_modal(
+    request: Request,
+    date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    
+    result = await db.execute(
+        select(Calendar).where(Calendar.id.in_(writable_ids))
+    )
+    calendars = result.scalars().all()
+    
+    default_date = date or datetime.now().strftime("%Y-%m-%d")
+    
+    return templates.TemplateResponse(
+        "partials/event_modal.html",
+        {
+            "request": request,
+            "user": user,
+            "event": None,
+            "calendars": calendars,
+            "default_date": default_date,
+            "is_new": True,
+        },
+    )
+
+
+@router.get("/calendar/events/{event_id}", response_class=HTMLResponse)
+async def edit_event_modal(
+    event_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    
+    if not await event_service.can_edit_event(event_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot edit this event")
+    
+    event = await event_service.get_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    result = await db.execute(
+        select(Calendar).where(Calendar.id.in_(writable_ids))
+    )
+    calendars = result.scalars().all()
+    
+    return templates.TemplateResponse(
+        "partials/event_modal.html",
+        {
+            "request": request,
+            "user": user,
+            "event": event,
+            "calendars": calendars,
+            "default_date": None,
+            "is_new": False,
+        },
+    )
+
+
+@router.post("/calendar/events")
+async def create_event(
+    calendar_id: int = Form(...),
+    summary: str = Form(...),
+    dtstart: str = Form(...),
+    dtend: Optional[str] = Form(None),
+    is_all_day: bool = Form(False),
+    location: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    rrule_freq: Optional[str] = Form(None),
+    rrule_interval: int = Form(1),
+    rrule_count: Optional[int] = Form(None),
+    rrule_until: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    
+    if calendar_id not in writable_ids:
+        raise HTTPException(status_code=403, detail="Cannot create events in this calendar")
+    
+    try:
+        if "T" in dtstart:
+            dtstart_dt = datetime.fromisoformat(dtstart.replace("Z", "+00:00"))
+        else:
+            dtstart_dt = datetime.strptime(dtstart, "%Y-%m-%d")
+    except ValueError:
+        dtstart_dt = datetime.now()
+    
+    dtend_dt = None
+    if dtend:
+        try:
+            if "T" in dtend:
+                dtend_dt = datetime.fromisoformat(dtend.replace("Z", "+00:00"))
+            else:
+                dtend_dt = datetime.strptime(dtend, "%Y-%m-%d")
+        except ValueError:
+            dtend_dt = None
+    
+    if is_all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(days=1)
+    elif not is_all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(hours=1)
+    
+    rrule = None
+    if rrule_freq and rrule_freq != "none":
+        until_dt = None
+        if rrule_until:
+            try:
+                until_dt = datetime.fromisoformat(rrule_until.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        rrule = build_rrule(
+            freq=rrule_freq,
+            interval=rrule_interval,
+            count=rrule_count,
+            until=until_dt,
+        )
+    
+    await event_service.create_event(
+        calendar_id=calendar_id,
+        summary=summary,
+        dtstart=dtstart_dt,
+        dtend=dtend_dt,
+        description=description,
+        location=location,
+        rrule=rrule,
+        is_all_day=is_all_day,
+    )
+    
+    return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+
+
+@router.put("/calendar/events/{event_id}")
+async def update_event(
+    event_id: int,
+    calendar_id: int = Form(...),
+    summary: str = Form(...),
+    dtstart: str = Form(...),
+    dtend: Optional[str] = Form(None),
+    is_all_day: bool = Form(False),
+    location: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    rrule_freq: Optional[str] = Form(None),
+    rrule_interval: int = Form(1),
+    rrule_count: Optional[int] = Form(None),
+    rrule_until: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    
+    if not await event_service.can_edit_event(event_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot edit this event")
+    
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    if calendar_id not in writable_ids:
+        raise HTTPException(status_code=403, detail="Cannot move event to this calendar")
+    
+    try:
+        if "T" in dtstart:
+            dtstart_dt = datetime.fromisoformat(dtstart.replace("Z", "+00:00"))
+        else:
+            dtstart_dt = datetime.strptime(dtstart, "%Y-%m-%d")
+    except ValueError:
+        dtstart_dt = datetime.now()
+    
+    dtend_dt = None
+    if dtend:
+        try:
+            if "T" in dtend:
+                dtend_dt = datetime.fromisoformat(dtend.replace("Z", "+00:00"))
+            else:
+                dtend_dt = datetime.strptime(dtend, "%Y-%m-%d")
+        except ValueError:
+            dtend_dt = None
+    
+    if is_all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(days=1)
+    elif not is_all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(hours=1)
+    
+    rrule = None
+    if rrule_freq and rrule_freq != "none":
+        until_dt = None
+        if rrule_until:
+            try:
+                until_dt = datetime.fromisoformat(rrule_until.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        rrule = build_rrule(
+            freq=rrule_freq,
+            interval=rrule_interval,
+            count=rrule_count,
+            until=until_dt,
+        )
+    
+    event = await event_service.get_by_id(event_id)
+    if event and event.calendar_id != calendar_id:
+        event.calendar_id = calendar_id
+        await db.commit()
+    
+    await event_service.update_event(
+        event_id=event_id,
+        summary=summary,
+        description=description,
+        dtstart=dtstart_dt,
+        dtend=dtend_dt,
+        location=location,
+        rrule=rrule,
+        is_all_day=is_all_day,
+    )
+    
+    return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+
+
+@router.delete("/calendar/events/{event_id}")
+async def delete_event(
+    event_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    
+    if not await event_service.can_edit_event(event_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot delete this event")
+    
+    await event_service.delete(event_id)
+    
+    return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")

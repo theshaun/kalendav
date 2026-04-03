@@ -1,4 +1,4 @@
-# Dockerfile for CalDAV Server
+# Dockerfile for KalenDAV Server
 
 FROM python:3.11-slim
 

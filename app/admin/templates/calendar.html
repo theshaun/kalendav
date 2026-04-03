@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Calendar{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Calendar</h1>
+    <button onclick="openNewEventModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+        </svg>
+        New Event
+    </button>
+</div>
+
+<div id="calendar" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4"></div>
+
+<div id="modal-container"></div>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+
+<style>
+    .fc {
+        font-family: inherit;
+    }
+    .fc .fc-toolbar-title {
+        font-size: 1.25rem;
+        color: #1f2937;
+    }
+    .dark .fc .fc-toolbar-title {
+        color: #f3f4f6;
+    }
+    .fc .fc-button {
+        background-color: #3b82f6;
+        border-color: #3b82f6;
+    }
+    .fc .fc-button:hover {
+        background-color: #2563eb;
+        border-color: #2563eb;
+    }
+    .fc .fc-button-active {
+        background-color: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+    .fc .fc-button:disabled {
+        background-color: #9ca3af;
+        border-color: #9ca3af;
+    }
+    .fc-theme-standard td, .fc-theme-standard th {
+        border-color: #e5e7eb;
+    }
+    .dark .fc-theme-standard td, .dark .fc-theme-standard th {
+        border-color: #374151;
+    }
+    .fc-theme-standard .fc-scrollgrid {
+        border-color: #e5e7eb;
+    }
+    .dark .fc-theme-standard .fc-scrollgrid {
+        border-color: #374151;
+    }
+    .fc .fc-daygrid-day.fc-day-today {
+        background-color: #eff6ff;
+    }
+    .dark .fc .fc-daygrid-day.fc-day-today {
+        background-color: #1e3a5f;
+    }
+    .fc .fc-col-header-cell-cushion {
+        color: #6b7280;
+    }
+    .dark .fc .fc-col-header-cell-cushion {
+        color: #9ca3af;
+    }
+    .fc .fc-daygrid-day-number, .fc .fc-daygrid-week-number {
+        color: #374151;
+    }
+    .dark .fc .fc-daygrid-day-number, .dark .fc .fc-daygrid-week-number {
+        color: #d1d5db;
+    }
+    .fc .fc-timegrid-slot-label-cushion {
+        color: #6b7280;
+    }
+    .dark .fc .fc-timegrid-slot-label-cushion {
+        color: #9ca3af;
+    }
+    .fc-event {
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 1px 4px;
+    }
+    .fc-event-main {
+        padding: 1px;
+    }
+</style>
+
+<script>
+    const writableCalendarIds = {{ writable_calendar_ids | tojson }};
+    let calendar;
+    
+    function isCalendarWritable(calendarId) {
+        return writableCalendarIds.includes(calendarId);
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const calendarEl = document.getElementById('calendar');
+        
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            events: '/admin/calendar/events',
+            eventClick: function(info) {
+                if (isCalendarWritable(info.event.extendedProps.calendarId)) {
+                    openEditEventModal(info.event.id);
+                } else {
+                    alert('You do not have permission to edit this event.');
+                }
+            },
+            dateClick: function(info) {
+                openNewEventModal(info.dateStr);
+            },
+            eventDisplay: 'block',
+            displayEventTime: true,
+            eventDidMount: function(info) {
+                const color = info.event.extendedProps.calendarColor || '#3b82f6';
+                info.el.style.backgroundColor = color;
+                info.el.style.borderColor = color;
+            }
+        });
+        
+        calendar.render();
+    });
+    
+    function openNewEventModal(date) {
+        const dateParam = date ? `?date=${date}` : '';
+        htmx.ajax('GET', `/admin/calendar/events/new${dateParam}`, {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+    
+    function openEditEventModal(eventId) {
+        htmx.ajax('GET', `/admin/calendar/events/${eventId}`, {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+    
+    function closeModal() {
+        document.getElementById('modal-container').innerHTML = '';
+    }
+    
+    function refreshCalendar() {
+        if (calendar) {
+            calendar.refetchEvents();
+        }
+    }
+    
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeModal();
+        }
+    });
+</script>
+{% endblock %}

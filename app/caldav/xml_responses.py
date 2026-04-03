@@ -1,6 +1,7 @@
 from lxml import etree
 from datetime import datetime
 from typing import Optional
+from app.config import settings
 
 
 NSMAP = {
@@ -93,7 +94,7 @@ def add_calendar_response(
     getctag.text = f"calendar-{calendar_id}-1"
     
     sync_token = etree.SubElement(prop, f"{D}sync-token")
-    sync_token.text = f"http://localhost/sync/calendar-{calendar_id}-1"
+    sync_token.text = f"{settings.base_uri}/sync/calendar-{calendar_id}-1"
     
     return response
 
