@@ -4,12 +4,16 @@ A lightweight, async CalDAV server built with FastAPI and SQLAlchemy.
 
 ## Features
 
-- **CalDAV Protocol Support**: Core CalDAV operations (PROPFIND, GET, PUT, DELETE, REPORT, MKCALENDAR)
+- **CalDAV Protocol Support**: Full CalDAV operations (OPTIONS, PROPFIND, PROPPATCH, GET, PUT, DELETE, REPORT, MKCALENDAR)
 - **Multiple Users**: Support for multiple user accounts
-- **Multiple Calendars**: Each user can have multiple calendars
-- **Calendar Sharing**: Share calendars between users with read-only or read-write permissions
+- **Multiple Calendars**: Each user can have multiple calendars with custom colors
+- **Calendar Sharing**: Share calendars between users with read, write, or admin permissions
+- **Web Calendar**: Beautiful web interface for viewing and managing events
+- **Recurring Events**: Full support for recurring events (daily, weekly, monthly, yearly)
+- **Calendar Management**: Rename calendars and change colors via CalDAV clients
 - **ICS Feed Support**: Access calendars via ICS feeds using API keys or Basic Auth
 - **Admin UI**: Web-based administration panel for managing users, calendars, and shares
+- **User Dashboard**: Personal dashboard for non-admin users to manage their calendars
 - **Async**: Fully async using SQLAlchemy 2.0 async support
 - **SQLite & PostgreSQL**: SQLite for development, PostgreSQL for production
 
@@ -89,11 +93,31 @@ Configure your calendar client (Thunderbird, macOS Calendar, etc.) with:
 
 Access the admin UI at `http://localhost:8000/admin/` with admin credentials.
 
-From here you can:
+**For Admins:**
 - Create and manage users
-- Create and manage calendars
+- Create and manage all calendars
 - Set up calendar sharing
 - Generate API keys for ICS feeds
+- View system statistics
+
+**For Regular Users:**
+- Manage your own calendars
+- View shared calendars (with permission indicators)
+- Create and manage your own API keys
+- Use the web calendar interface
+
+### Web Calendar
+
+Access the web calendar at `http://localhost:8000/admin/calendar/`
+
+Features:
+- **Multiple Views**: Day, week, and month views
+- **Event Management**: Create, edit, and delete events with a modern interface
+- **Recurring Events**: Set up daily, weekly, monthly, or yearly recurring events
+- **Time Slots**: Click on specific times in day/week view to create events with 30-minute default duration
+- **Calendar Colors**: Events display in their calendar's color
+- **Shared Calendars**: View events from calendars shared with you
+- **Permissions**: Edit rights are enforced - read-only calendars cannot be modified
 
 ### ICS Feeds
 
@@ -110,35 +134,18 @@ http://localhost:8000/ics/{calendar_id}
 # with username/password
 ```
 
-## API Endpoints
+### Calendar Sharing
 
-### CalDAV Endpoints
+Share calendars with other users:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `PROPFIND` | `/dav/` | Principal discovery |
-| `PROPFIND` | `/dav/{user}/calendars/` | List calendars |
-| `PROPFIND` | `/dav/{user}/calendars/{id}/` | Calendar properties |
-| `MKCALENDAR` | `/dav/{user}/calendars/{id}/` | Create calendar |
-| `GET` | `/dav/{user}/calendars/{id}/` | Get calendar (ICS) |
-| `PUT` | `/dav/{user}/calendars/{id}/{event}.ics` | Create/update event |
-| `DELETE` | `/dav/{user}/calendars/{id}/{event}.ics` | Delete event |
-| `REPORT` | `/dav/{user}/calendars/{id}/` | Query events |
+1. Go to **My Calendars** in the admin interface
+2. Click **Shares** on the calendar you want to share
+3. Select a user and permission level:
+   - **Read**: Can view events only
+   - **Write**: Can view, create, and edit events
+   - **Admin**: Full control including sharing management
 
-### ICS Feed Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/ics/{calendar_id}` | Get ICS feed |
-
-### Admin Endpoints
-
-| Path | Description |
-|------|-------------|
-| `/admin/` | Dashboard |
-| `/admin/users` | User management |
-| `/admin/calendars` | Calendar management |
-| `/admin/api-keys` | API key management |
+Shared calendars appear in both the CalDAV client and web calendar with clear permission indicators.
 
 ## Database Migrations
 
@@ -153,6 +160,63 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
+## Troubleshooting
+
+### CalDAV Client Issues
+
+**Client shows 401 Unauthorized:**
+- Ensure you're using the correct username and password
+- Check that the user exists in the database
+- Run `python init_admin.py` to create the admin user
+
+**Client shows 405 Method Not Allowed:**
+- Make sure you're connecting to `/dav/` (with trailing slash)
+- Verify the server is running and accessible
+
+**Events don't appear after creation:**
+- Check the calendar permissions
+- Verify the event was saved (check database or admin UI)
+- Try refreshing the calendar in your client
+
+**Recurring events not showing correctly:**
+- Ensure your CalDAV client supports RRULE
+- Check that the recurrence rule is valid
+- Test in the web calendar interface
+
+### Web Calendar Issues
+
+**Calendar not loading:**
+- Check browser console for errors
+- Verify you're logged in
+- Ensure calendars exist for your user
+
+**Can't edit events:**
+- Check if you have write permission on the calendar
+- Shared calendars with read-only access cannot be edited
+
+## Supported CalDAV Clients
+
+KalenDAV should works with most CalDAV-compatible clients:
+
+**Desktop:**
+- Thunderbird (with Lightning)
+- macOS Calendar
+- Microsoft Outlook (with CalDAV Synchronizer)
+- Evolution
+
+**Mobile:**
+- iOS Calendar
+- Android (via DAVx⁵)
+- Samsung Calendar
+
+**Web:**
+- Built-in web calendar at `/admin/calendar/`
+
+**Recommended Settings:**
+- Server URL: `http://your-server:8000/dav/`
+- Use SSL/TLS in production
+- Enable periodic sync (recommended: 15-30 minutes)
+
 ## Development
 
 ```bash
@@ -165,30 +229,6 @@ uvicorn app.main:app --reload
 
 # Run tests
 pytest tests/
-```
-
-## Project Structure
-
-```
-kalendav/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app entry
-│   ├── config.py            # Settings (env vars)
-│   ├── database.py          # Async engine, sessions
-│   ├── models/              # SQLAlchemy models
-│   ├── schemas/             # Pydantic models
-│   ├── caldav/              # CalDAV protocol
-│   ├── ics_feed/            # ICS feed endpoints
-│   ├── admin/               # Admin UI
-│   ├── auth/                # Authentication
-│   └── services/            # Business logic
-├── alembic/                 # Database migrations
-├── tests/                   # Test files
-├── requirements.txt         # Dependencies
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
 ```
 
 ## License

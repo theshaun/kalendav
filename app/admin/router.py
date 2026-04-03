@@ -901,8 +901,68 @@ async def get_calendar_events(
             "location": event.location,
             "description": event.description,
         }
-        if event.rrule:
-            event_data["rrule"] = event.rrule
+        if event.rrule and event.rrule.strip():
+            # Convert rrule string to FullCalendar format
+            try:
+                rrule_str = event.rrule.strip()
+                
+                # Handle malformed vRecur format from old bug
+                if rrule_str.startswith('vRecur('):
+                    # Extract the dict part from vRecur({...})
+                    import ast
+                    dict_str = rrule_str[7:-1]  # Remove 'vRecur(' and ')'
+                    rrule_dict = ast.literal_eval(dict_str)
+                    
+                    # Convert vRecur dict to proper format
+                    rrule_obj = {}
+                    for key, value in rrule_dict.items():
+                        key_lower = key.lower()
+                        if isinstance(value, list) and len(value) > 0:
+                            value = value[0]
+                        
+                        if key_lower in ['interval', 'count']:
+                            rrule_obj[key_lower] = int(value)
+                        elif key_lower == 'freq':
+                            rrule_obj['freq'] = str(value).lower()
+                        elif key_lower == 'until':
+                            rrule_obj[key_lower] = str(value)
+                        elif key_lower == 'byday':
+                            if isinstance(value, list):
+                                rrule_obj['byday'] = value
+                            else:
+                                rrule_obj['byday'] = str(value).split(',')
+                        else:
+                            rrule_obj[key_lower] = str(value)
+                else:
+                    # Handle proper RRULE format: FREQ=WEEKLY;INTERVAL=2;COUNT=10
+                    rrule_obj = {}
+                    parts = rrule_str.split(';')
+                    for part in parts:
+                        part = part.strip()
+                        if '=' in part:
+                            key, value = part.split('=', 1)
+                            key_lower = key.strip().lower()
+                            value = value.strip()
+                            
+                            if key_lower in ['interval', 'count']:
+                                rrule_obj[key_lower] = int(value)
+                            elif key_lower == 'freq':
+                                rrule_obj['freq'] = value.lower()
+                            elif key_lower == 'until':
+                                rrule_obj[key_lower] = value
+                            elif key_lower == 'byday':
+                                rrule_obj['byday'] = value.split(',')
+                            else:
+                                rrule_obj[key_lower] = value
+                
+                # Only add rrule if we have a valid frequency
+                if 'freq' in rrule_obj and rrule_obj['freq']:
+                    event_data["rrule"] = rrule_obj
+            except Exception as e:
+                # Log error but don't break the calendar
+                import logging
+                logging.error(f"Error parsing rrule '{event.rrule}': {e}")
+                pass
         events_data.append(event_data)
     
     return JSONResponse(content=events_data)

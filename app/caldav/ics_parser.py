@@ -44,6 +44,44 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
     return uid, summary, description, dtstart, dtend, location, rrule
 
 
+def parse_rrule_string(rrule_str: str) -> dict:
+    """Parse an RRULE string like 'FREQ=WEEKLY;INTERVAL=2' into a dict"""
+    if not rrule_str:
+        return {}
+    
+    result = {}
+    parts = rrule_str.split(';')
+    
+    for part in parts:
+        if '=' in part:
+            key, value = part.split('=', 1)
+            key = key.strip().upper()
+            value = value.strip()
+            
+            # Convert numeric values
+            if key in ['INTERVAL', 'COUNT', 'BYMONTH', 'BYMONTHDAY', 'BYYEARDAY', 'BYWEEKNO', 'BYHOUR', 'BYMINUTE', 'BYSECOND']:
+                try:
+                    result[key.lower()] = int(value)
+                except ValueError:
+                    result[key.lower()] = value
+            elif key == 'UNTIL':
+                # Parse UNTIL date
+                try:
+                    if len(value) == 8:
+                        result[key.lower()] = datetime.strptime(value, '%Y%m%d').date()
+                    else:
+                        result[key.lower()] = datetime.strptime(value.replace('Z', ''), '%Y%m%dT%H%M%S')
+                except ValueError:
+                    result[key.lower()] = value
+            elif key == 'BYDAY':
+                # BYDAY can have multiple values
+                result[key.lower()] = [v.strip() for v in value.split(',')]
+            else:
+                result[key.lower()] = value
+    
+    return result
+
+
 def generate_ics(
     uid: str,
     summary: str,
@@ -84,8 +122,9 @@ def generate_ics(
     if location:
         event.add("location", location)
     if rrule:
-        from icalendar import vRecur
-        event.add("rrule", vRecur.from_ical(rrule))
+        rrule_dict = parse_rrule_string(rrule)
+        if rrule_dict:
+            event.add("rrule", rrule_dict)
     
     cal.add_component(event)
     
@@ -152,6 +191,10 @@ def generate_calendar_ics(events: list, calendar_name: str = "Calendar") -> str:
             ical_event.add("description", event.description)
         if event.location:
             ical_event.add("location", event.location)
+        if event.rrule:
+            rrule_dict = parse_rrule_string(event.rrule)
+            if rrule_dict:
+                ical_event.add("rrule", rrule_dict)
         
         cal.add_component(ical_event)
     
