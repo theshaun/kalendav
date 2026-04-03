@@ -232,6 +232,40 @@ async def handle_proppatch(request: Request, path_parts: list, user: User, db: A
     if not calendar:
         raise HTTPException(status_code=403)
     
+    body = await request.body()
+    updated_props = []
+    
+    if body:
+        try:
+            root = etree.fromstring(body)
+            
+            ICAL = "{http://apple.com/ns/ical/}"
+            D = "{DAV:}"
+            
+            for set_elem in root.findall(".//{%s}set" % "DAV:"):
+                prop_elem = set_elem.find("{%s}prop" % "DAV:")
+                if prop_elem is not None:
+                    displayname = prop_elem.find(f"{D}displayname")
+                    if displayname is not None and displayname.text:
+                        calendar.name = displayname.text
+                        updated_props.append("displayname")
+                    
+                    description = prop_elem.find(f"{D}description")
+                    if description is not None and description.text:
+                        calendar.description = description.text
+                        updated_props.append("description")
+                    
+                    calendar_color = prop_elem.find(f"{ICAL}calendar-color")
+                    if calendar_color is not None and calendar_color.text:
+                        calendar.color = calendar_color.text
+                        updated_props.append("calendar-color")
+            
+            if updated_props:
+                await db.commit()
+                await db.refresh(calendar)
+        except etree.XMLSyntaxError:
+            pass
+    
     multistatus = create_multistatus()
     response = add_response(multistatus, f"/dav/{user.username}/calendars/{cal_id}/")
     add_propstat(response, "HTTP/1.1 200 OK")
@@ -248,10 +282,39 @@ async def handle_mkcalendar(request: Request, path_parts: list, user: User, db: 
         raise HTTPException(status_code=400)
     
     calendar_name = path_parts[2] if len(path_parts) > 2 else "New Calendar"
+    calendar_description = None
+    calendar_color = "#3B82F6"
+    
+    body = await request.body()
+    if body:
+        try:
+            root = etree.fromstring(body)
+            
+            ICAL = "{http://apple.com/ns/ical/}"
+            D = "{DAV:}"
+            
+            for set_elem in root.findall(".//{%s}set" % "DAV:"):
+                prop_elem = set_elem.find("{%s}prop" % "DAV:")
+                if prop_elem is not None:
+                    displayname = prop_elem.find(f"{D}displayname")
+                    if displayname is not None and displayname.text:
+                        calendar_name = displayname.text
+                    
+                    description = prop_elem.find(f"{D}description")
+                    if description is not None and description.text:
+                        calendar_description = description.text
+                    
+                    color = prop_elem.find(f"{ICAL}calendar-color")
+                    if color is not None and color.text:
+                        calendar_color = color.text
+        except etree.XMLSyntaxError:
+            pass
     
     new_calendar = Calendar(
         user_id=user.id,
         name=calendar_name,
+        description=calendar_description,
+        color=calendar_color,
     )
     db.add(new_calendar)
     await db.commit()

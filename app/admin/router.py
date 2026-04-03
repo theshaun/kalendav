@@ -614,11 +614,34 @@ async def user_list_calendars(
         .options(selectinload(Calendar.shares))
         .where(Calendar.user_id == user.id)
     )
-    calendars = result.scalars().all()
+    owned_calendars = result.scalars().all()
+    
+    result = await db.execute(
+        select(CalendarShare)
+        .options(
+            selectinload(CalendarShare.calendar).selectinload(Calendar.user),
+            selectinload(CalendarShare.calendar).selectinload(Calendar.shares)
+        )
+        .where(CalendarShare.user_id == user.id)
+    )
+    shares = result.scalars().all()
+    shared_calendars = []
+    for share in shares:
+        if share.calendar:
+            shared_calendars.append({
+                'calendar': share.calendar,
+                'permission': share.permission.value,
+                'owner': share.calendar.user
+            })
     
     return templates.TemplateResponse(
         "user_calendars.html",
-        {"request": request, "user": user, "calendars": calendars},
+        {
+            "request": request,
+            "user": user,
+            "calendars": owned_calendars,
+            "shared_calendars": shared_calendars,
+        },
     )
 
 
