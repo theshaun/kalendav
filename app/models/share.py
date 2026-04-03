@@ -11,8 +11,9 @@ if TYPE_CHECKING:
 
 
 class SharePermission(str, enum.Enum):
-    READ_ONLY = "read_only"
-    READ_WRITE = "read_write"
+    READ = "read"
+    WRITE = "write"
+    ADMIN = "admin"
 
 
 class CalendarShare(Base):

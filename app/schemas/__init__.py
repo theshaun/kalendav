@@ -92,9 +92,7 @@ class EventResponse(EventBase):
         from_attributes = True
 
 
-class SharePermission(str):
-    READ_ONLY = "read_only"
-    READ_WRITE = "read_write"
+from app.models.share import SharePermission
 
 
 class CalendarShareCreate(BaseModel):

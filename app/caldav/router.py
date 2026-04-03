@@ -20,6 +20,9 @@ from app.caldav.ics_parser import parse_ics, generate_ics
 from datetime import datetime
 import hashlib
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -31,7 +34,7 @@ def check_calendar_permission(user: User, calendar: Calendar, require_write: boo
     for share in calendar.shares:
         if share.user_id == user.id:
             if require_write:
-                return share.permission.value == "read_write"
+                return share.permission.value in ["write", "admin"]
             return True
     
     return False
@@ -223,22 +226,65 @@ async def handle_mkcalendar(request: Request, path_parts: list, user: User, db: 
 
 
 async def handle_get(path_parts: list, user: User, db: AsyncSession):
-    if len(path_parts) < 5 or path_parts[1] != "calendars":
-        raise HTTPException(status_code=404)
+    logger.info(f"handle_get called with path_parts: {path_parts}")
     
-    try:
-        cal_id = int(path_parts[2])
-    except ValueError:
-        raise HTTPException(status_code=404)
+    cal_id = None
     
-    calendar = await get_calendar_with_permission(cal_id, user, db)
-    if not calendar:
-        raise HTTPException(status_code=404)
+    # Handle different path patterns
+    if len(path_parts) == 1:
+        # Pattern: /dav/{event_uid}.ics - get from default calendar
+        event_uid = path_parts[0].replace(".ics", "")
+        
+        # Get user's default calendar
+        result = await db.execute(
+            select(Calendar)
+            .where(Calendar.user_id == user.id, Calendar.is_default == True)
+        )
+        calendar = result.scalar_one_or_none()
+        
+        if not calendar:
+            # Get first calendar if no default
+            result = await db.execute(
+                select(Calendar)
+                .where(Calendar.user_id == user.id)
+                .order_by(Calendar.created_at)
+            )
+            calendar = result.scalars().first()
+        
+        if not calendar:
+            raise HTTPException(status_code=404, detail="No calendar found")
+        
+        # Get specific event
+        result = await db.execute(
+            select(Event).where(Event.calendar_id == calendar.id, Event.uid == event_uid)
+        )
+        event = result.scalar_one_or_none()
+        
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        events = [event]
     
-    result = await db.execute(
-        select(Event).where(Event.calendar_id == calendar.id)
-    )
-    events = result.scalars().all()
+    elif len(path_parts) >= 5 and path_parts[1] == "calendars":
+        # Pattern: /dav/{username}/calendars/{calendar_id}/{event_uid}.ics
+        try:
+            cal_id = int(path_parts[2])
+        except ValueError:
+            raise HTTPException(status_code=404)
+        
+        calendar = await get_calendar_with_permission(cal_id, user, db)
+        if not calendar:
+            raise HTTPException(status_code=404)
+        
+        # Get all events from calendar
+        result = await db.execute(
+            select(Event).where(Event.calendar_id == calendar.id)
+        )
+        events = result.scalars().all()
+    
+    else:
+        logger.error(f"Invalid path structure for GET: {path_parts}")
+        raise HTTPException(status_code=404)
     
     from app.caldav.ics_parser import generate_calendar_ics
     ics_content = generate_calendar_ics(events, calendar.name)
@@ -250,17 +296,53 @@ async def handle_get(path_parts: list, user: User, db: AsyncSession):
 
 
 async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession):
-    if len(path_parts) < 5 or path_parts[1] != "calendars":
-        raise HTTPException(status_code=404)
+    logger.info(f"handle_put called with path_parts: {path_parts}")
     
-    try:
-        cal_id = int(path_parts[2])
-    except ValueError:
-        raise HTTPException(status_code=404)
+    cal_id = None
+    event_uid_from_path = None
     
-    calendar = await get_calendar_with_permission(cal_id, user, db, require_write=True)
-    if not calendar:
-        raise HTTPException(status_code=403)
+    # Handle different path patterns
+    if len(path_parts) == 1:
+        # Pattern: /dav/{event_uid}.ics - use default calendar
+        event_uid_from_path = path_parts[0].replace(".ics", "")
+        logger.info(f"Direct event PUT for UID: {event_uid_from_path}, using default calendar")
+        
+        # Get user's default calendar or first calendar
+        result = await db.execute(
+            select(Calendar)
+            .where(Calendar.user_id == user.id)
+            .order_by(Calendar.is_default.desc(), Calendar.created_at)
+        )
+        calendar = result.scalars().first()
+        
+        if not calendar:
+            # Create a default calendar if none exists
+            calendar = Calendar(
+                user_id=user.id,
+                name=f"{user.username}'s Calendar",
+                is_default=True,
+            )
+            db.add(calendar)
+            await db.commit()
+            await db.refresh(calendar)
+            logger.info(f"Created default calendar {calendar.id} for user {user.username}")
+    
+    elif len(path_parts) >= 4 and path_parts[1] == "calendars":
+        # Pattern: /dav/{username}/calendars/{calendar_id}/{event_uid}.ics
+        try:
+            cal_id = int(path_parts[2])
+        except ValueError:
+            logger.error(f"Invalid calendar ID in path: {path_parts[2]}")
+            raise HTTPException(status_code=404)
+        
+        calendar = await get_calendar_with_permission(cal_id, user, db, require_write=True)
+        if not calendar:
+            logger.error(f"No permission for calendar {cal_id} or calendar not found")
+            raise HTTPException(status_code=403)
+    
+    else:
+        logger.error(f"Invalid path structure: {path_parts}")
+        raise HTTPException(status_code=404)
     
     ics_content = body.decode("utf-8")
     uid, summary, description, dtstart, dtend, location, rrule = parse_ics(ics_content)
@@ -303,20 +385,46 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
 
 
 async def handle_delete(path_parts: list, user: User, db: AsyncSession):
-    if len(path_parts) < 5 or path_parts[1] != "calendars":
+    logger.info(f"handle_delete called with path_parts: {path_parts}")
+    
+    cal_id = None
+    event_uid = None
+    
+    # Handle different path patterns
+    if len(path_parts) == 1:
+        # Pattern: /dav/{event_uid}.ics - delete from default calendar
+        event_uid = path_parts[0].replace(".ics", "")
+        logger.info(f"Direct event DELETE for UID: {event_uid}")
+        
+        # Get user's default calendar or first calendar
+        result = await db.execute(
+            select(Calendar)
+            .where(Calendar.user_id == user.id)
+            .order_by(Calendar.is_default.desc(), Calendar.created_at)
+        )
+        calendar = result.scalars().first()
+        
+        if not calendar:
+            raise HTTPException(status_code=404, detail="No calendar found")
+    
+    elif len(path_parts) >= 4 and path_parts[1] == "calendars":
+        # Pattern: /dav/{username}/calendars/{calendar_id}/{event_uid}.ics
+        try:
+            cal_id = int(path_parts[2])
+        except ValueError:
+            logger.error(f"Invalid calendar ID in path: {path_parts[2]}")
+            raise HTTPException(status_code=404)
+        
+        calendar = await get_calendar_with_permission(cal_id, user, db, require_write=True)
+        if not calendar:
+            logger.error(f"No permission for calendar {cal_id} or calendar not found")
+            raise HTTPException(status_code=403)
+    
+    else:
+        logger.error(f"Invalid path structure for DELETE: {path_parts}")
         raise HTTPException(status_code=404)
     
-    try:
-        cal_id = int(path_parts[2])
-    except ValueError:
-        raise HTTPException(status_code=404)
-    
-    event_uid = path_parts[4].replace(".ics", "")
-    
-    calendar = await get_calendar_with_permission(cal_id, user, db, require_write=True)
-    if not calendar:
-        raise HTTPException(status_code=403)
-    
+    # Find and delete the event
     result = await db.execute(
         select(Event).where(Event.calendar_id == calendar.id, Event.uid == event_uid)
     )

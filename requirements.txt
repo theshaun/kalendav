@@ -12,3 +12,4 @@ lxml>=5.1.0
 icalendar>=5.0.11
 python-dateutil>=2.8.2
 httpx>=0.26.0
+itsdangerous>=2.1.2

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Admin{% endblock %} - CalDAV Server</title>
+    <title>{% block title %}My Account{% endblock %} - KalenDAV</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -23,11 +23,10 @@
     <nav class="bg-blue-600 dark:bg-blue-800 text-white shadow-lg">
         <div class="container mx-auto px-4 py-3">
             <div class="flex justify-between items-center">
-                <a href="/admin" class="text-xl font-bold">KalenDAV</a>
+                <a href="/admin/my-dashboard" class="text-xl font-bold">KalenDAV</a>
                 <div class="flex space-x-4 items-center">
-                    <a href="/admin/users" class="hover:underline">Users</a>
-                    <a href="/admin/calendars" class="hover:underline">Calendars</a>
-                    <a href="/admin/api-keys" class="hover:underline">API Keys</a>
+                    <a href="/admin/my-calendars" class="hover:underline">My Calendars</a>
+                    <a href="/admin/my-api-keys" class="hover:underline">My API Keys</a>
                     <span class="text-blue-200 dark:text-blue-300">|</span>
                     <span>{{ user.username }}</span>
                     <!-- Dark mode toggle -->

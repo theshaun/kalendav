@@ -5,7 +5,7 @@ from dateutil import parser as date_parser
 import uuid
 
 
-def parse_ics(ics_content: str) -> Tuple[str, str, datetime, Optional[datetime], Optional[str], Optional[str], Optional[str]]:
+def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str]]:
     cal = Calendar.from_ical(ics_content)
     
     uid = str(uuid.uuid4())
