@@ -49,13 +49,13 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start</label>
                         <input type="datetime-local" name="dtstart" id="dtstart" required
-                            value="{% if event %}{{ event.dtstart.strftime('%Y-%m-%dT%H:%M') }}{% elif default_date %}{{ default_date }}T09:00{% else %}{{ None }}{% endif %}"
+                            value="{% if event %}{{ event.dtstart.strftime('%Y-%m-%dT%H:%M') }}{% elif default_start %}{{ default_start }}{% elif default_date %}{{ default_date }}T09:00{% else %}{% endif %}"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End</label>
                         <input type="datetime-local" name="dtend" id="dtend"
-                            value="{% if event and event.dtend %}{{ event.dtend.strftime('%Y-%m-%dT%H:%M') }}{% endif %}"
+                            value="{% if event and event.dtend %}{{ event.dtend.strftime('%Y-%m-%dT%H:%M') }}{% elif default_end %}{{ default_end }}{% endif %}"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500">
                     </div>
                 </div>

@@ -912,6 +912,8 @@ async def get_calendar_events(
 async def new_event_modal(
     request: Request,
     date: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -924,6 +926,8 @@ async def new_event_modal(
     calendars = result.scalars().all()
     
     default_date = date or datetime.now().strftime("%Y-%m-%d")
+    default_start = start
+    default_end = end
     
     return templates.TemplateResponse(
         "partials/event_modal.html",
@@ -933,6 +937,8 @@ async def new_event_modal(
             "event": None,
             "calendars": calendars,
             "default_date": default_date,
+            "default_start": default_start,
+            "default_end": default_end,
             "is_new": True,
         },
     )
@@ -1044,7 +1050,9 @@ async def create_event(
         is_all_day=is_all_day,
     )
     
-    return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+    response = HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+    response.headers["HX-Trigger"] = "eventCreated"
+    return response
 
 
 @router.put("/calendar/events/{event_id}")

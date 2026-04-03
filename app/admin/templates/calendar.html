@@ -19,7 +19,9 @@
 
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/rrule@2.6.4/dist/es5/rrule.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@6.1.10/index.global.min.js"></script>
 
 <style>
     .fc {
@@ -121,7 +123,7 @@
                 }
             },
             dateClick: function(info) {
-                openNewEventModal(info.dateStr);
+                openNewEventModal(info.dateStr, info.view.type);
             },
             eventDisplay: 'block',
             displayEventTime: true,
@@ -135,8 +137,19 @@
         calendar.render();
     });
     
-    function openNewEventModal(date) {
-        const dateParam = date ? `?date=${date}` : '';
+    function openNewEventModal(date, viewType) {
+        let dateParam = '';
+        if (date) {
+            if (viewType === 'dayGridMonth') {
+                dateParam = `?date=${date}`;
+            } else {
+                const startDate = new Date(date);
+                const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+                const startStr = startDate.toISOString().slice(0, 16);
+                const endStr = endDate.toISOString().slice(0, 16);
+                dateParam = `?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`;
+            }
+        }
         htmx.ajax('GET', `/admin/calendar/events/new${dateParam}`, {
             target: '#modal-container',
             swap: 'innerHTML'
@@ -160,6 +173,24 @@
         }
     }
     
+    // Listen for custom event to refresh calendar
+    document.body.addEventListener('eventCreated', function() {
+        closeModal();
+        refreshCalendar();
+    });
+    
+    // HTMX event handlers for calendar refresh
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.successful) {
+            const path = evt.detail.pathInfo.requestPath;
+            if (path.includes('/admin/calendar/events') && (evt.detail.verb === 'POST' || evt.detail.verb === 'PUT' || evt.detail.verb === 'DELETE')) {
+                closeModal();
+                refreshCalendar();
+            }
+        }
+    });
+    
+    // Handle ESC key to close modal
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             closeModal();
