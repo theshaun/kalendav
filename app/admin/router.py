@@ -297,6 +297,80 @@ async def create_calendar(
     return RedirectResponse(url="/admin/calendars", status_code=303)
 
 
+@router.get("/calendars/{calendar_id}/edit", response_class=HTMLResponse)
+async def edit_calendar_form(
+    calendar_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    check_admin(user)
+    
+    result = await db.execute(
+        select(Calendar).options(selectinload(Calendar.user)).where(Calendar.id == calendar_id)
+    )
+    calendar = result.scalar_one_or_none()
+    
+    if not calendar:
+        raise HTTPException(status_code=404)
+    
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    
+    return templates.TemplateResponse(
+        "calendar_form.html",
+        {"request": request, "user": user, "calendar": calendar, "users": users},
+    )
+
+
+@router.post("/calendars/{calendar_id}/edit")
+async def edit_calendar(
+    calendar_id: int,
+    name: str = Form(...),
+    description: str = Form(None),
+    color: str = Form("#3B82F6"),
+    user_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    check_admin(user)
+    
+    result = await db.execute(select(Calendar).where(Calendar.id == calendar_id))
+    calendar = result.scalar_one_or_none()
+    
+    if not calendar:
+        raise HTTPException(status_code=404)
+    
+    calendar.name = name
+    calendar.description = description
+    calendar.color = color
+    calendar.user_id = user_id
+    
+    await db.commit()
+    
+    return RedirectResponse(url="/admin/calendars", status_code=303)
+
+
+@router.post("/calendars/{calendar_id}/delete")
+async def delete_calendar(
+    calendar_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    check_admin(user)
+    
+    result = await db.execute(select(Calendar).where(Calendar.id == calendar_id))
+    calendar = result.scalar_one_or_none()
+    
+    if not calendar:
+        raise HTTPException(status_code=404)
+    
+    await db.delete(calendar)
+    await db.commit()
+    
+    return RedirectResponse(url="/admin/calendars", status_code=303)
+
+
 @router.get("/calendars/{calendar_id}/shares", response_class=HTMLResponse)
 async def manage_shares(
     calendar_id: int,

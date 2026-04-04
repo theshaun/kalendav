@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Create Calendar{% endblock %}
+{% block title %}{% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}{% endblock %}
 
 {% block content %}
 <div class="mb-6">
@@ -8,36 +8,38 @@
 </div>
 
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-lg">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">Create Calendar</h1>
+    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">
+        {% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}
+    </h1>
     
-    <form action="/admin/calendars/create" method="post" class="space-y-4">
+    <form action="{% if calendar %}/admin/calendars/{{ calendar.id }}/edit{% else %}/admin/calendars/create{% endif %}" method="post" class="space-y-4">
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input type="text" name="name" required class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="text" name="name" required value="{% if calendar %}{{ calendar.name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
         
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">{% if calendar %}{{ calendar.description or '' }}{% endif %}</textarea>
         </div>
         
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
-            <input type="color" name="color" value="#3B82F6" class="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="color" name="color" value="{% if calendar %}{{ calendar.color or '#3B82F6' }}{% else %}#3B82F6{% endif %}" class="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
         
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Owner</label>
             <select name="user_id" required class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {% for u in users %}
-                <option value="{{ u.id }}">{{ u.username }}</option>
+                <option value="{{ u.id }}" {% if calendar and calendar.user_id == u.id %}selected{% endif %}>{{ u.username }}</option>
                 {% endfor %}
             </select>
         </div>
         
         <div class="pt-4">
             <button type="submit" class="w-full bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-                Create Calendar
+                {% if calendar %}Update Calendar{% else %}Create Calendar{% endif %}
             </button>
         </div>
     </form>

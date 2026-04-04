@@ -49,7 +49,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('calendar_id', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
-        sa.Column('permission', sa.Enum('read_only', 'read_write', name='sharepermission'), nullable=False),
+        sa.Column('permission', sa.Enum('read', 'write', 'admin', name='sharepermission'), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.ForeignKeyConstraint(['calendar_id'], ['calendars.id']),
         sa.ForeignKeyConstraint(['user_id'], ['users.id']),

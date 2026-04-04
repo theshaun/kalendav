@@ -22,7 +22,10 @@ class CalendarShare(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     calendar_id: Mapped[int] = mapped_column(ForeignKey("calendars.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    permission: Mapped[SharePermission] = mapped_column(Enum(SharePermission), nullable=False)
+    permission: Mapped[SharePermission] = mapped_column(
+        Enum(SharePermission, values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     calendar: Mapped["Calendar"] = relationship("Calendar", back_populates="shares")
