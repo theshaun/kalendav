@@ -982,6 +982,8 @@ async def get_calendar_events(
                 
                 # Only add rrule if we have a valid frequency
                 if 'freq' in rrule_obj and rrule_obj['freq']:
+                    # Add dtstart for FullCalendar rrule plugin
+                    rrule_obj['dtstart'] = dtstart_str
                     event_data["rrule"] = rrule_obj
             except Exception as e:
                 # Log error but don't break the calendar
