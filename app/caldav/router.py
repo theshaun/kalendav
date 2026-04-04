@@ -133,6 +133,38 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
     elif len(path_parts) == 1 and path_parts[0] == "principals":
         add_response(multistatus, f"/dav/principals/{user.username}/")
     
+    elif len(path_parts) >= 3 and path_parts[0] == "principals" and path_parts[2] == "calendars":
+        result = await db.execute(
+            select(Calendar)
+            .options(selectinload(Calendar.shares))
+            .where(Calendar.user_id == user.id)
+        )
+        owned_calendars = result.scalars().all()
+        
+        result = await db.execute(
+            select(CalendarShare)
+            .options(selectinload(CalendarShare.calendar))
+            .where(CalendarShare.user_id == user.id)
+        )
+        shared = result.scalars().all()
+        shared_calendars = [s.calendar for s in shared]
+        
+        all_calendars = list(owned_calendars) + shared_calendars
+        
+        if depth == "1":
+            add_response(multistatus, f"/dav/principals/{user.username}/calendars/")
+        
+        for cal in all_calendars:
+            href = f"/dav/{user.username}/calendars/{cal.id}/"
+            add_calendar_response(
+                multistatus,
+                href,
+                cal.id,
+                cal.name,
+                cal.description,
+                cal.color or "#3B82F6",
+            )
+    
     elif len(path_parts) >= 2 and path_parts[0] == "principals":
         add_principal_response(
             multistatus,
