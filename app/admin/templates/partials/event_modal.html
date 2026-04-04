@@ -123,6 +123,8 @@
                     </div>
                 </div>
                 
+                <input type="hidden" name="tz" id="event-tz">
+                
                 <div class="flex justify-between pt-4">
                     <div>
                         {% if not is_new %}
@@ -149,6 +151,8 @@
 </div>
 
 <script>
+    document.getElementById('event-tz').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
     function toggleAllDay(isAllDay) {
         const dtstart = document.getElementById('dtstart');
         const dtend = document.getElementById('dtend');

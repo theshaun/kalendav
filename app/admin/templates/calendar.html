@@ -109,12 +109,19 @@
         
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
+            firstDay: 1,
             headerToolbar: {
                 left: 'prev,next today',
                 center: 'title',
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
-            events: '/admin/calendar/events',
+            events: function(fetchInfo, successCallback, failureCallback) {
+                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                fetch(`/admin/calendar/events?start=${encodeURIComponent(fetchInfo.startStr)}&end=${encodeURIComponent(fetchInfo.endStr)}&tz=${encodeURIComponent(tz)}`)
+                    .then(response => response.json())
+                    .then(data => successCallback(data))
+                    .catch(error => failureCallback(error));
+            },
             eventTimeFormat: {
                 hour: 'numeric',
                 minute: '2-digit',

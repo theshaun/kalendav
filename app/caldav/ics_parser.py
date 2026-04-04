@@ -1,8 +1,17 @@
 from icalendar import Calendar, Event as ICalEvent, vDate, vDatetime
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Optional, Tuple
 from dateutil import parser as date_parser
 import uuid
+
+
+def ensure_utc_naive(dt: datetime) -> datetime:
+    """Convert datetime to UTC and strip timezone info for database storage"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str]]:
@@ -28,15 +37,16 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
                 dtstart = component.get("dtstart").dt
                 if not isinstance(dtstart, datetime):
                     dtstart = datetime.combine(dtstart, datetime.min.time())
+                dtstart = ensure_utc_naive(dtstart)
             if component.get("dtend"):
                 dtend = component.get("dtend").dt
                 if not isinstance(dtend, datetime):
                     dtend = datetime.combine(dtend, datetime.min.time())
+                dtend = ensure_utc_naive(dtend)
             if component.get("location"):
                 location = str(component.get("location"))
             if component.get("rrule"):
                 rrule_raw = str(component.get("rrule"))
-                # Strip RRULE: prefix if present
                 if rrule_raw.upper().startswith('RRULE:'):
                     rrule = rrule_raw[6:]
                 else:
