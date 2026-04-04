@@ -115,6 +115,16 @@
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
             events: '/admin/calendar/events',
+            eventTimeFormat: {
+                hour: 'numeric',
+                minute: '2-digit',
+                meridiem: 'short'
+            },
+            slotLabelFormat: {
+                hour: 'numeric',
+                minute: '2-digit',
+                meridiem: 'short'
+            },
             eventClick: function(info) {
                 if (isCalendarWritable(info.event.extendedProps.calendarId)) {
                     openEditEventModal(info.event.id);

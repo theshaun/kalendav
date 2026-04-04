@@ -889,11 +889,19 @@ async def get_calendar_events(
     
     events_data = []
     for event in events:
+        # Format datetime strings for FullCalendar
+        dtstart_str = event.dtstart.isoformat()
+        dtend_str = None
+        if event.dtend:
+            dtend_str = event.dtend.isoformat()
+        else:
+            dtend_str = (event.dtstart + timedelta(hours=1)).isoformat()
+        
         event_data = {
             "id": event.id,
             "title": event.summary or "(No title)",
-            "start": event.dtstart.isoformat(),
-            "end": event.dtend.isoformat() if event.dtend else (event.dtstart + timedelta(hours=1)).isoformat(),
+            "start": dtstart_str,
+            "end": dtend_str,
             "allDay": event.is_all_day,
             "calendarId": event.calendar_id,
             "calendarName": event.calendar.name if event.calendar else "",
@@ -905,6 +913,10 @@ async def get_calendar_events(
             # Convert rrule string to FullCalendar format
             try:
                 rrule_str = event.rrule.strip()
+                
+                # Remove RRULE: prefix if present
+                if rrule_str.upper().startswith('RRULE:'):
+                    rrule_str = rrule_str[6:]
                 
                 # Handle malformed vRecur format from old bug
                 if rrule_str.startswith('vRecur('):
@@ -925,7 +937,14 @@ async def get_calendar_events(
                         elif key_lower == 'freq':
                             rrule_obj['freq'] = str(value).lower()
                         elif key_lower == 'until':
-                            rrule_obj[key_lower] = str(value)
+                            until_val = str(value)
+                            # Convert to ISO format for JavaScript
+                            if len(until_val) == 8:
+                                rrule_obj[key_lower] = f"{until_val[:4]}-{until_val[4:6]}-{until_val[6:8]}"
+                            elif 'T' in until_val:
+                                rrule_obj[key_lower] = until_val.replace('Z', '')
+                            else:
+                                rrule_obj[key_lower] = until_val
                         elif key_lower == 'byday':
                             if isinstance(value, list):
                                 rrule_obj['byday'] = value
@@ -949,7 +968,13 @@ async def get_calendar_events(
                             elif key_lower == 'freq':
                                 rrule_obj['freq'] = value.lower()
                             elif key_lower == 'until':
-                                rrule_obj[key_lower] = value
+                                # Convert to ISO format for JavaScript
+                                if len(value) == 8:
+                                    rrule_obj[key_lower] = f"{value[:4]}-{value[4:6]}-{value[6:8]}"
+                                elif 'T' in value:
+                                    rrule_obj[key_lower] = value.replace('Z', '')
+                                else:
+                                    rrule_obj[key_lower] = value
                             elif key_lower == 'byday':
                                 rrule_obj['byday'] = value.split(',')
                             else:

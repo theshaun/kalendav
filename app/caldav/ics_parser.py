@@ -35,7 +35,12 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
             if component.get("location"):
                 location = str(component.get("location"))
             if component.get("rrule"):
-                rrule = str(component.get("rrule"))
+                rrule_raw = str(component.get("rrule"))
+                # Strip RRULE: prefix if present
+                if rrule_raw.upper().startswith('RRULE:'):
+                    rrule = rrule_raw[6:]
+                else:
+                    rrule = rrule_raw
             break
     
     if dtstart is None:
@@ -48,6 +53,10 @@ def parse_rrule_string(rrule_str: str) -> dict:
     """Parse an RRULE string like 'FREQ=WEEKLY;INTERVAL=2' into a dict"""
     if not rrule_str:
         return {}
+    
+    # Strip RRULE: prefix if present
+    if rrule_str.upper().startswith('RRULE:'):
+        rrule_str = rrule_str[6:]
     
     result = {}
     parts = rrule_str.split(';')

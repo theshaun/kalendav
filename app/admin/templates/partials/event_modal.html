@@ -154,20 +154,26 @@
         const dtend = document.getElementById('dtend');
         
         if (isAllDay) {
+            const startDate = dtstart.value.split('T')[0];
+            const endDate = dtend.value ? dtend.value.split('T')[0] : '';
+            
             dtstart.type = 'date';
             dtend.type = 'date';
-            dtstart.value = dtstart.value.split('T')[0];
-            if (dtend.value) {
-                dtend.value = dtend.value.split('T')[0];
+            
+            dtstart.value = startDate;
+            if (endDate) {
+                dtend.value = endDate;
             }
         } else {
+            const startDate = dtstart.value.split('T')[0];
+            const endDate = dtend.value ? dtend.value.split('T')[0] : '';
+            
             dtstart.type = 'datetime-local';
             dtend.type = 'datetime-local';
-            if (dtstart.value && !dtstart.value.includes('T')) {
-                dtstart.value = dtstart.value + 'T09:00';
-            }
-            if (dtend.value && !dtend.value.includes('T')) {
-                dtend.value = dtend.value + 'T10:00';
+            
+            dtstart.value = startDate + 'T09:00';
+            if (endDate) {
+                dtend.value = endDate + 'T10:00';
             }
         }
     }
