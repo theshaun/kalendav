@@ -1,5 +1,6 @@
 from app.config import settings
 from app.database import init_db
+from app.init_data import create_admin_user
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from app.caldav.router import router as caldav_router
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await create_admin_user()
     yield
 
 

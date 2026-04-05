@@ -3,6 +3,9 @@ from app.database import async_session, init_db
 from app.models import User, Calendar
 from app.auth.basic import hash_password
 from sqlalchemy import select
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def create_admin_user():
@@ -18,13 +21,16 @@ async def create_admin_user():
                 is_admin=True,
             )
             session.add(admin)
+            await session.flush()
             
             default_calendar = Calendar(
-                user=admin,
+                user_id=admin.id,
                 name="Default",
                 is_default=True,
             )
             session.add(default_calendar)
             
             await session.commit()
-            print(f"Created admin user: {settings.admin_user}")
+            logger.info(f"Created admin user: {settings.admin_user}")
+        else:
+            logger.info(f"Admin user already exists: {settings.admin_user}")
