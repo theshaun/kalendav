@@ -147,53 +147,6 @@ Share calendars with other users:
 
 Shared calendars appear in both the CalDAV client and web calendar with clear permission indicators.
 
-## Database Migrations
-
-```bash
-# Create a new migration
-alembic revision --autogenerate -m "Description"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
-```
-
-## Troubleshooting
-
-### CalDAV Client Issues
-
-**Client shows 401 Unauthorized:**
-- Ensure you're using the correct username and password
-- Check that the user exists in the database
-- Run `python init_admin.py` to create the admin user
-
-**Client shows 405 Method Not Allowed:**
-- Make sure you're connecting to `/dav/` (with trailing slash)
-- Verify the server is running and accessible
-
-**Events don't appear after creation:**
-- Check the calendar permissions
-- Verify the event was saved (check database or admin UI)
-- Try refreshing the calendar in your client
-
-**Recurring events not showing correctly:**
-- Ensure your CalDAV client supports RRULE
-- Check that the recurrence rule is valid
-- Test in the web calendar interface
-
-### Web Calendar Issues
-
-**Calendar not loading:**
-- Check browser console for errors
-- Verify you're logged in
-- Ensure calendars exist for your user
-
-**Can't edit events:**
-- Check if you have write permission on the calendar
-- Shared calendars with read-only access cannot be edited
-
 ## Supported CalDAV Clients
 
 KalenDAV should works with most CalDAV-compatible clients:
@@ -207,7 +160,6 @@ KalenDAV should works with most CalDAV-compatible clients:
 **Mobile:**
 - iOS Calendar
 - Android (via DAVx⁵)
-- Samsung Calendar
 
 **Web:**
 - Built-in web calendar at `/admin/calendar/`
@@ -216,6 +168,19 @@ KalenDAV should works with most CalDAV-compatible clients:
 - Server URL: `http://your-server:8000/dav/`
 - Use SSL/TLS in production
 - Enable periodic sync (recommended: 15-30 minutes)
+
+## Database Migrations
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "Description"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback one migration
+alembic downgrade -1
+```
 
 ## Development
 
