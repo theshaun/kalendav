@@ -548,6 +548,8 @@ async def handle_delete(path_parts: list, user: User, db: AsyncSession):
             logger.error(f"Invalid calendar ID in path: {path_parts[2]}")
             raise HTTPException(status_code=404)
         
+        event_uid = path_parts[3].replace(".ics", "")
+        
         calendar = await get_calendar_with_permission(cal_id, user, db, require_write=True)
         if not calendar:
             logger.error(f"No permission for calendar {cal_id} or calendar not found")
