@@ -289,7 +289,10 @@ async def handle_proppatch(request: Request, path_parts: list, user: User, db: A
                     
                     calendar_color = prop_elem.find(f"{ICAL}calendar-color")
                     if calendar_color is not None and calendar_color.text:
-                        calendar.color = calendar_color.text
+                        color_value = calendar_color.text
+                        if len(color_value) > 7:
+                            color_value = color_value[:7]
+                        calendar.color = color_value
                         updated_props.append("calendar-color")
             
             if updated_props:
