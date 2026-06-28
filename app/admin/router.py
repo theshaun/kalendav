@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response as FastAPIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
@@ -17,7 +17,7 @@ from app.auth.basic import generate_api_key, hash_api_key
 from app.auth.session_deps import get_current_user_session, get_current_user_session_optional
 from app.auth.session import set_session_cookie, clear_session_cookie
 from app.services.event_service import EventService
-from app.caldav.ics_parser import build_rrule
+from app.caldav.ics_parser import build_rrule, parse_ics_bulk, generate_calendar_ics
 from app.config import settings
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta, timezone
@@ -992,6 +992,7 @@ async def get_calendar_events(
             "calendarId": event.calendar_id,
             "calendarName": event.calendar.name if event.calendar else "",
             "calendarColor": event.calendar.color if event.calendar else "#3B82F6",
+            "color": event.color,
             "location": event.location,
             "description": event.description,
         }
@@ -1161,6 +1162,7 @@ async def create_event(
     is_all_day: bool = Form(False),
     location: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    color: Optional[str] = Form(None),
     rrule_freq: Optional[str] = Form(None),
     rrule_interval: int = Form(1),
     rrule_count: Optional[int] = Form(None),
@@ -1235,6 +1237,7 @@ async def create_event(
         location=location,
         rrule=rrule,
         is_all_day=is_all_day,
+        color=color,
     )
     
     response = HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
@@ -1252,6 +1255,7 @@ async def update_event(
     is_all_day: bool = Form(False),
     location: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    color: Optional[str] = Form(None),
     rrule_freq: Optional[str] = Form(None),
     rrule_interval: int = Form(1),
     rrule_count: Optional[int] = Form(None),
@@ -1334,6 +1338,7 @@ async def update_event(
         location=location,
         rrule=rrule,
         is_all_day=is_all_day,
+        color=color,
     )
     
     return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
@@ -1353,3 +1358,103 @@ async def delete_event(
     await event_service.delete(event_id)
     
     return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+
+
+@router.get("/calendar/export/{calendar_id}")
+async def export_calendar(
+    calendar_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    accessible_ids = await event_service.get_user_accessible_calendars(user.id)
+    
+    if calendar_id not in accessible_ids:
+        raise HTTPException(status_code=403, detail="Cannot export this calendar")
+    
+    result = await db.execute(
+        select(Calendar).where(Calendar.id == calendar_id)
+    )
+    calendar = result.scalar_one_or_none()
+    if not calendar:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    
+    result = await db.execute(
+        select(Event).where(Event.calendar_id == calendar_id)
+    )
+    events = list(result.scalars().all())
+    
+    ics_content = generate_calendar_ics(events, calendar.name, calendar.color)
+    
+    return FastAPIResponse(
+        content=ics_content,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{calendar.name}.ics"',
+        },
+    )
+
+
+@router.get("/calendar/import", response_class=HTMLResponse)
+async def import_modal(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    
+    result = await db.execute(
+        select(Calendar).where(Calendar.id.in_(writable_ids))
+    )
+    calendars = result.scalars().all()
+    
+    return templates.TemplateResponse(
+        "partials/import_modal.html",
+        {
+            "request": request,
+            "user": user,
+            "calendars": calendars,
+        },
+    )
+
+
+@router.post("/calendar/import")
+async def import_ics(
+    calendar_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    
+    if calendar_id not in writable_ids:
+        raise HTTPException(status_code=403, detail="Cannot import into this calendar")
+    
+    if not file.filename.endswith(('.ics', '.ical', '.ifb', '.icalendar')):
+        return HTMLResponse(content='<div class="p-4 text-red-600">Please upload a valid .ics file.</div>')
+    
+    try:
+        content = await file.read()
+        ics_content = content.decode("utf-8")
+    except Exception:
+        return HTMLResponse(content='<div class="p-4 text-red-600">Failed to read the file. Please try again.</div>')
+    
+    try:
+        events_data = parse_ics_bulk(ics_content)
+    except Exception as e:
+        import logging
+        logging.error(f"ICS parse error: {e}")
+        return HTMLResponse(content=f'<div class="p-4 text-red-600">Failed to parse ICS file: {str(e)}</div>')
+    
+    if not events_data:
+        return HTMLResponse(content='<div class="p-4 text-yellow-600">No events found in the ICS file.</div>')
+    
+    count = await event_service.import_events(calendar_id, events_data)
+    
+    return HTMLResponse(content=f'''<div class="p-4 text-green-600">
+        <p class="font-semibold">Import complete!</p>
+        <p>Successfully imported {count} event{"s" if count != 1 else ""}.</p>
+    </div>
+    <script>closeModal(); refreshCalendar();</script>''')

@@ -18,7 +18,7 @@ async def authenticate_ics_feed(
     api_key: str = Query(None),
     credentials: HTTPBasicCredentials = Depends(HTTPBasic(auto_error=False)),
     db: AsyncSession = Depends(get_db),
-) -> tuple[User, Calendar]:
+) -> tuple[User, AsyncSession]:
     user = None
     
     if api_key:
@@ -56,12 +56,10 @@ async def authenticate_ics_feed(
 @router.get("/{calendar_id}")
 async def get_ics_feed(
     calendar_id: int,
-    request: Request,
-    api_key: str = Query(None),
-    db: AsyncSession = Depends(get_db),
+    auth: tuple[User, AsyncSession] = Depends(authenticate_ics_feed),
 ):
-    user, db = await authenticate_ics_feed(request, api_key, db=db)
-    
+    user, db = auth
+
     result = await db.execute(
         select(Calendar)
         .options(selectinload(Calendar.shares))
@@ -83,7 +81,7 @@ async def get_ics_feed(
     events = result.scalars().all()
     
     from app.caldav.ics_parser import generate_calendar_ics
-    ics_content = generate_calendar_ics(events, calendar.name)
+    ics_content = generate_calendar_ics(events, calendar.name, calendar.color)
     
     return FastAPIResponse(
         content=ics_content,

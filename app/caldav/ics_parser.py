@@ -1,12 +1,11 @@
 from icalendar import Calendar, Event as ICalEvent, vDate, vDatetime
 from datetime import datetime, timedelta, date, timezone
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 from dateutil import parser as date_parser
 import uuid
 
 
 def ensure_utc_naive(dt: datetime) -> datetime:
-    """Convert datetime to UTC and strip timezone info for database storage"""
     if dt is None:
         return None
     if dt.tzinfo is None:
@@ -14,7 +13,7 @@ def ensure_utc_naive(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str]]:
+def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str], Optional[str]]:
     cal = Calendar.from_ical(ics_content)
     
     uid = str(uuid.uuid4())
@@ -24,6 +23,7 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
     dtend = None
     location = None
     rrule = None
+    color = None
     
     for component in cal.walk():
         if component.name == "VEVENT":
@@ -51,20 +51,102 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
                     rrule = rrule_raw[6:]
                 else:
                     rrule = rrule_raw
+            x_color = component.get("X-APPLE-CALENDAR-COLOR")
+            if x_color:
+                color = str(x_color)
             break
     
     if dtstart is None:
         dtstart = datetime.utcnow()
     
-    return uid, summary, description, dtstart, dtend, location, rrule
+    return uid, summary, description, dtstart, dtend, location, rrule, color
+
+
+def parse_ics_bulk(ics_content: str) -> List[Dict]:
+    cal = Calendar.from_ical(ics_content)
+    events = []
+    
+    for component in cal.walk():
+        if component.name == "VEVENT":
+            uid = str(uuid.uuid4())
+            summary = None
+            description = None
+            dtstart = None
+            dtend = None
+            location = None
+            rrule = None
+            color = None
+            
+            if component.get("uid"):
+                uid = str(component.get("uid"))
+            if component.get("summary"):
+                summary = str(component.get("summary"))
+            if component.get("description"):
+                description = str(component.get("description"))
+            if component.get("dtstart"):
+                dtstart = component.get("dtstart").dt
+                if not isinstance(dtstart, datetime):
+                    dtstart = datetime.combine(dtstart, datetime.min.time())
+                dtstart = ensure_utc_naive(dtstart)
+            if component.get("dtend"):
+                dtend = component.get("dtend").dt
+                if not isinstance(dtend, datetime):
+                    dtend = datetime.combine(dtend, datetime.min.time())
+                dtend = ensure_utc_naive(dtend)
+            if component.get("location"):
+                location = str(component.get("location"))
+            if component.get("rrule"):
+                rrule_raw = str(component.get("rrule"))
+                if rrule_raw.upper().startswith('RRULE:'):
+                    rrule = rrule_raw[6:]
+                else:
+                    rrule = rrule_raw
+            x_color = component.get("X-APPLE-CALENDAR-COLOR")
+            if x_color:
+                color = str(x_color)
+            
+            if dtstart is None:
+                dtstart = datetime.utcnow()
+            
+            is_all_day = False
+            if component.get("dtstart"):
+                original_dt = component.get("dtstart").dt
+                if isinstance(original_dt, date) and not isinstance(original_dt, datetime):
+                    is_all_day = True
+            
+            new_uid = str(uuid.uuid4())
+            raw_ics = generate_ics(
+                uid=new_uid,
+                summary=summary or "",
+                dtstart=dtstart,
+                dtend=dtend,
+                description=description,
+                location=location,
+                rrule=rrule,
+                is_all_day=is_all_day,
+                color=color,
+            )
+            
+            events.append({
+                "uid": new_uid,
+                "summary": summary,
+                "description": description,
+                "dtstart": dtstart,
+                "dtend": dtend,
+                "location": location,
+                "rrule": rrule,
+                "color": color,
+                "is_all_day": is_all_day,
+                "raw_ics": raw_ics,
+            })
+    
+    return events
 
 
 def parse_rrule_string(rrule_str: str) -> dict:
-    """Parse an RRULE string like 'FREQ=WEEKLY;INTERVAL=2' into a dict"""
     if not rrule_str:
         return {}
     
-    # Strip RRULE: prefix if present
     if rrule_str.upper().startswith('RRULE:'):
         rrule_str = rrule_str[6:]
     
@@ -77,14 +159,12 @@ def parse_rrule_string(rrule_str: str) -> dict:
             key = key.strip().upper()
             value = value.strip()
             
-            # Convert numeric values
             if key in ['INTERVAL', 'COUNT', 'BYMONTH', 'BYMONTHDAY', 'BYYEARDAY', 'BYWEEKNO', 'BYHOUR', 'BYMINUTE', 'BYSECOND']:
                 try:
                     result[key.lower()] = int(value)
                 except ValueError:
                     result[key.lower()] = value
             elif key == 'UNTIL':
-                # Parse UNTIL date
                 try:
                     if len(value) == 8:
                         result[key.lower()] = datetime.strptime(value, '%Y%m%d').date()
@@ -93,7 +173,6 @@ def parse_rrule_string(rrule_str: str) -> dict:
                 except ValueError:
                     result[key.lower()] = value
             elif key == 'BYDAY':
-                # BYDAY can have multiple values
                 result[key.lower()] = [v.strip() for v in value.split(',')]
             else:
                 result[key.lower()] = value
@@ -110,6 +189,7 @@ def generate_ics(
     location: Optional[str] = None,
     rrule: Optional[str] = None,
     is_all_day: bool = False,
+    color: Optional[str] = None,
 ) -> str:
     cal = Calendar()
     cal.add("prodid", "-//KalenDAV Server//EN")
@@ -144,6 +224,8 @@ def generate_ics(
         rrule_dict = parse_rrule_string(rrule)
         if rrule_dict:
             event.add("rrule", rrule_dict)
+    if color:
+        event.add("X-APPLE-CALENDAR-COLOR", color)
     
     cal.add_component(event)
     
@@ -187,13 +269,15 @@ def build_rrule(
     return ";".join(parts)
 
 
-def generate_calendar_ics(events: list, calendar_name: str = "Calendar") -> str:
+def generate_calendar_ics(events: list, calendar_name: str = "Calendar", calendar_color: Optional[str] = None) -> str:
     cal = Calendar()
     cal.add("prodid", "-//KalenDAV Server//EN")
     cal.add("version", "2.0")
     cal.add("calscale", "GREGORIAN")
     cal.add("method", "PUBLISH")
     cal.add("x-wr-calname", calendar_name)
+    if calendar_color:
+        cal.add("x-apple-calendar-color", calendar_color)
     
     for event in events:
         ical_event = ICalEvent()
@@ -214,6 +298,8 @@ def generate_calendar_ics(events: list, calendar_name: str = "Calendar") -> str:
             rrule_dict = parse_rrule_string(event.rrule)
             if rrule_dict:
                 ical_event.add("rrule", rrule_dict)
+        if event.color:
+            ical_event.add("X-APPLE-CALENDAR-COLOR", event.color)
         
         cal.add_component(ical_event)
     

@@ -60,6 +60,7 @@ class EventBase(BaseModel):
     dtend: Optional[datetime] = None
     is_all_day: bool = False
     location: Optional[str] = None
+    color: Optional[str] = None
 
 
 class EventCreate(EventBase):
@@ -75,6 +76,7 @@ class EventUpdate(BaseModel):
     dtend: Optional[datetime] = None
     is_all_day: Optional[bool] = None
     location: Optional[str] = None
+    color: Optional[str] = None
     rrule: Optional[str] = None
     raw_ics: Optional[str] = None
 

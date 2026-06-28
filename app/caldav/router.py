@@ -420,7 +420,7 @@ async def handle_get(path_parts: list, user: User, db: AsyncSession):
         raise HTTPException(status_code=404)
     
     from app.caldav.ics_parser import generate_calendar_ics
-    ics_content = generate_calendar_ics(events, calendar.name)
+    ics_content = generate_calendar_ics(events, calendar.name, calendar.color)
     
     return FastAPIResponse(
         content=ics_content,
@@ -478,7 +478,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
         raise HTTPException(status_code=404)
     
     ics_content = body.decode("utf-8")
-    uid, summary, description, dtstart, dtend, location, rrule = parse_ics(ics_content)
+    uid, summary, description, dtstart, dtend, location, rrule, color = parse_ics(ics_content)
     
     result = await db.execute(
         select(Event).where(Event.calendar_id == calendar.id, Event.uid == uid)
@@ -492,6 +492,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
         existing_event.dtend = dtend
         existing_event.location = location
         existing_event.rrule = rrule
+        existing_event.color = color
         existing_event.raw_ics = ics_content
         existing_event.updated_at = datetime.utcnow()
         event = existing_event
@@ -504,6 +505,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
             dtstart=dtstart,
             dtend=dtend,
             location=location,
+            color=color,
             rrule=rrule,
             raw_ics=ics_content,
         )

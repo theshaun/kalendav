@@ -5,12 +5,36 @@
 {% block content %}
 <div class="mb-6 flex justify-between items-center">
     <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Calendar</h1>
-    <button onclick="openNewEventModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-        </svg>
-        New Event
-    </button>
+    <div class="flex items-center gap-2">
+        <div class="relative" id="export-dropdown-container">
+            <button onclick="toggleExportDropdown()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Export
+            </button>
+            <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 z-50">
+                {% for cal in calendars %}
+                <a href="/admin/calendar/export/{{ cal.id }}" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-white text-sm first:rounded-t-lg last:rounded-b-lg">
+                    <span class="w-3 h-3 rounded-full" style="background-color: {{ cal.color }}"></span>
+                    {{ cal.name }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        <button onclick="openImportModal()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+            </svg>
+            Import
+        </button>
+        <button onclick="openNewEventModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+            </svg>
+            New Event
+        </button>
+    </div>
 </div>
 
 <div id="calendar" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4"></div>
@@ -145,7 +169,7 @@
             eventDisplay: 'block',
             displayEventTime: true,
             eventDidMount: function(info) {
-                const color = info.event.extendedProps.calendarColor || '#3b82f6';
+                const color = info.event.extendedProps.color || info.event.extendedProps.calendarColor || '#3b82f6';
                 info.el.style.backgroundColor = color;
                 info.el.style.borderColor = color;
             }
@@ -183,6 +207,24 @@
     function closeModal() {
         document.getElementById('modal-container').innerHTML = '';
     }
+    
+    function openImportModal() {
+        htmx.ajax('GET', '/admin/calendar/import', {
+            target: '#modal-container',
+            swap: 'innerHTML'
+        });
+    }
+    
+    function toggleExportDropdown() {
+        document.getElementById('export-dropdown').classList.toggle('hidden');
+    }
+    
+    document.addEventListener('click', function(e) {
+        const container = document.getElementById('export-dropdown-container');
+        if (container && !container.contains(e.target)) {
+            document.getElementById('export-dropdown').classList.add('hidden');
+        }
+    });
     
     function refreshCalendar() {
         if (calendar) {

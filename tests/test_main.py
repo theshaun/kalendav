@@ -1,12 +1,4 @@
 import pytest
-from httpx import AsyncClient
-from app.main import app
-
-
-@pytest.fixture
-async def client():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        yield client
 
 
 @pytest.mark.asyncio
@@ -19,4 +11,6 @@ async def test_health(client):
 @pytest.mark.asyncio
 async def test_admin_unauthorized(client):
     response = await client.get("/admin/")
-    assert response.status_code == 401
+    # LoginRequiredException handler (app/main.py:24-25) returns a 302
+    # redirect to /admin/login, raised before any DB query.
+    assert response.status_code == 302

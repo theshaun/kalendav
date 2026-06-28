@@ -20,6 +20,7 @@ class Event(Base):
     dtend: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_all_day: Mapped[bool] = mapped_column(Boolean, default=False)
     location: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_ics: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

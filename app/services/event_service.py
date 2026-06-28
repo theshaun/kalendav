@@ -122,6 +122,7 @@ class EventService:
         location: Optional[str] = None,
         rrule: Optional[str] = None,
         is_all_day: bool = False,
+        color: Optional[str] = None,
     ) -> Event:
         uid = str(uuid.uuid4())
         
@@ -135,6 +136,7 @@ class EventService:
             location=location,
             rrule=rrule,
             is_all_day=is_all_day,
+            color=color,
         )
         
         event = Event(
@@ -145,6 +147,7 @@ class EventService:
             dtstart=dtstart,
             dtend=dtend,
             location=location,
+            color=color,
             rrule=rrule,
             raw_ics=raw_ics,
             is_all_day=is_all_day,
@@ -164,6 +167,7 @@ class EventService:
         location: Optional[str] = None,
         rrule: Optional[str] = None,
         is_all_day: Optional[bool] = None,
+        color: Optional[str] = ...,
     ) -> Optional[Event]:
         event = await self.get_by_id(event_id)
         if not event:
@@ -183,6 +187,8 @@ class EventService:
             event.rrule = rrule
         if is_all_day is not None:
             event.is_all_day = is_all_day
+        if color is not ...:
+            event.color = color
 
         from app.caldav.ics_parser import generate_ics
         event.raw_ics = generate_ics(
@@ -194,6 +200,7 @@ class EventService:
             location=event.location,
             rrule=event.rrule,
             is_all_day=event.is_all_day,
+            color=event.color,
         )
 
         event.updated_at = datetime.utcnow()
@@ -212,6 +219,7 @@ class EventService:
         dtend: Optional[datetime] = None,
         location: Optional[str] = None,
         rrule: Optional[str] = None,
+        color: Optional[str] = None,
     ) -> Event:
         event = Event(
             calendar_id=calendar_id,
@@ -221,6 +229,7 @@ class EventService:
             dtstart=dtstart or datetime.utcnow(),
             dtend=dtend,
             location=location,
+            color=color,
             rrule=rrule,
             raw_ics=raw_ics,
         )
@@ -239,6 +248,7 @@ class EventService:
         location: Optional[str] = None,
         rrule: Optional[str] = None,
         raw_ics: Optional[str] = None,
+        color: Optional[str] = None,
     ) -> Optional[Event]:
         event = await self.get_by_id(event_id)
         if not event:
@@ -258,6 +268,8 @@ class EventService:
             event.rrule = rrule
         if raw_ics is not None:
             event.raw_ics = raw_ics
+        if color is not None:
+            event.color = color
 
         event.updated_at = datetime.utcnow()
         await self.db.commit()
@@ -272,3 +284,24 @@ class EventService:
         await self.db.delete(event)
         await self.db.commit()
         return True
+
+    async def import_events(self, calendar_id: int, events_data: list) -> int:
+        count = 0
+        for event_data in events_data:
+            event = Event(
+                calendar_id=calendar_id,
+                uid=event_data["uid"],
+                summary=event_data.get("summary"),
+                description=event_data.get("description"),
+                dtstart=event_data.get("dtstart", datetime.utcnow()),
+                dtend=event_data.get("dtend"),
+                location=event_data.get("location"),
+                color=event_data.get("color"),
+                rrule=event_data.get("rrule"),
+                is_all_day=event_data.get("is_all_day", False),
+                raw_ics=event_data.get("raw_ics", ""),
+            )
+            self.db.add(event)
+            count += 1
+        await self.db.commit()
+        return count
