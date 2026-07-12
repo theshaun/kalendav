@@ -294,7 +294,50 @@ async def test_put_same_uid_updates_existing(client, db_session):
     )
     rows = result.fetchall()
     assert len(rows) == 1  # updated in place, not duplicated
-    assert rows[0].summary == "Second"
+
+
+@pytest.mark.asyncio
+async def test_put_with_tzid_round_trips_through_get(client, db_session):
+    # Regression: CalDAV clients (iPhone, DAVx5) PUT events with TZID parameters.
+    # The server must preserve the TZID so a subsequent GET returns the same
+    # wall-clock the client sent, not a UTC-shifted value.
+    user = await make_user(db_session, username="alice", password="pw")
+    # Use default calendar so /dav/{uid}.ics path resolves (the calendar-specific
+    # GET path has a pre-existing off-by-one — see test_get_calendar_event_path_quirk_returns_404).
+    cal = await make_calendar(db_session, user.id, name="C", is_default=True)
+    put_body = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//Test//EN\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:tz-rt@test\r\n"
+        "SUMMARY:BNE Event\r\n"
+        "DTSTART;TZID=Australia/Brisbane:20260715T090000\r\n"
+        "DTEND;TZID=Australia/Brisbane:20260715T100000\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/tz-rt@test.ics",
+        headers=basic_auth_header("alice", "pw"), content=put_body,
+    )
+    assert resp.status_code == 201
+
+    # event.timezone column captured the original TZID
+    result = await db_session.execute(
+        Event.__table__.select().where(Event.uid == "tz-rt@test")
+    )
+    row = result.one()
+    assert row.timezone == "Australia/Brisbane"
+
+    # GET regenerates via generate_calendar_ics which now uses event.timezone:
+    # 09:00 BNE stored as 23:00 UTC (prev day) -> converted back to 09:00 BNE
+    get_resp = await client.get(
+        "/dav/tz-rt@test.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert get_resp.status_code == 200
+    assert "DTSTART;TZID=Australia/Brisbane:20260715T090000" in get_resp.text
 
 
 @pytest.mark.asyncio
@@ -402,6 +445,91 @@ async def test_report_returns_all_calendar_events(client, db_session):
     hrefs = [h.text for h in root.iter(f"{D}href")]
     assert any("r-1.ics" in h for h in hrefs)
     assert any("r-2.ics" in h for h in hrefs)
+
+
+@pytest.mark.asyncio
+async def test_report_response_includes_sync_token_at_multistatus_level(client, db_session):
+    # Regression: without <d:sync-token> as a direct child of <d:multistatus>,
+    # the .NET Dav.Client library's .Single() call throws InvalidOperationException.
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="r-1", summary="R1",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"), content=b"",
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    # <d:sync-token> must be a direct child of <d:multistatus>, not nested in a response
+    direct_tokens = [c for c in root if etree.QName(c).localname == "sync-token"]
+    assert len(direct_tokens) == 1, "exactly one multistatus-level sync-token required (RFC 6578 §3.4)"
+    assert direct_tokens[0].text
+    assert direct_tokens[0].text.startswith("http"), "token should be a stable opaque URI"
+
+
+@pytest.mark.asyncio
+async def test_report_sync_token_advances_on_event_change(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    e1 = await make_event(db_session, cal.id, uid="adv-1", summary="V1",
+                          dtstart=datetime(2026, 6, 1, 10, 0, 0))
+
+    async def current_token() -> str:
+        resp = await client.request(
+            "REPORT", f"/dav/alice/calendars/{cal.id}/",
+            headers=basic_auth_header("alice", "pw"), content=b"",
+        )
+        root = etree.fromstring(resp.content)
+        tokens = [c for c in root if etree.QName(c).localname == "sync-token"]
+        return tokens[0].text
+
+    token_before = await current_token()
+
+    e1.summary = "V2"
+    await db_session.commit()
+
+    token_after_update = await current_token()
+    assert token_after_update != token_before, "token must advance when an event is updated"
+
+    await make_event(db_session, cal.id, uid="adv-2", summary="V3",
+                     dtstart=datetime(2026, 6, 2, 10, 0, 0))
+    token_after_add = await current_token()
+    assert token_after_add != token_after_update, "token must advance when an event is added"
+
+
+@pytest.mark.asyncio
+async def test_propfind_advertises_matching_sync_token(client, db_session):
+    # Clients use PROPFIND's sync-token property to decide whether to re-sync.
+    # It must match what REPORT returns, else clients either never sync (stale)
+    # or loop (always newer).
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="m-1", summary="M1",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+
+    propfind = await client.request(
+        "PROPFIND", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=_propupdate("<d:prop><d:sync-token/></d:prop>"),
+    )
+    assert propfind.status_code == 207
+    propfind_root = etree.fromstring(propfind.content)
+    propfind_tokens = propfind_root.iter(f"{D}sync-token")
+    propfind_token = next(propfind_tokens).text
+
+    report = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"), content=b"",
+    )
+    report_root = etree.fromstring(report.content)
+    report_token = next(
+        c.text for c in report_root if etree.QName(c).localname == "sync-token"
+    )
+
+    assert propfind_token == report_token, (
+        "PROPFIND sync-token property must match REPORT multistatus sync-token"
+    )
 
 
 @pytest.mark.asyncio

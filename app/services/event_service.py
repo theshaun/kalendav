@@ -123,9 +123,10 @@ class EventService:
         rrule: Optional[str] = None,
         is_all_day: bool = False,
         color: Optional[str] = None,
+        timezone: Optional[str] = None,
     ) -> Event:
         uid = str(uuid.uuid4())
-        
+
         from app.caldav.ics_parser import generate_ics
         raw_ics = generate_ics(
             uid=uid,
@@ -137,8 +138,9 @@ class EventService:
             rrule=rrule,
             is_all_day=is_all_day,
             color=color,
+            timezone=timezone,
         )
-        
+
         event = Event(
             calendar_id=calendar_id,
             uid=uid,
@@ -149,6 +151,7 @@ class EventService:
             location=location,
             color=color,
             rrule=rrule,
+            timezone=timezone,
             raw_ics=raw_ics,
             is_all_day=is_all_day,
         )
@@ -168,6 +171,7 @@ class EventService:
         rrule: Optional[str] = None,
         is_all_day: Optional[bool] = None,
         color: Optional[str] = ...,
+        timezone: Optional[str] = None,
     ) -> Optional[Event]:
         event = await self.get_by_id(event_id)
         if not event:
@@ -189,6 +193,8 @@ class EventService:
             event.is_all_day = is_all_day
         if color is not ...:
             event.color = color
+        if timezone is not None:
+            event.timezone = timezone
 
         from app.caldav.ics_parser import generate_ics
         event.raw_ics = generate_ics(
@@ -201,6 +207,7 @@ class EventService:
             rrule=event.rrule,
             is_all_day=event.is_all_day,
             color=event.color,
+            timezone=event.timezone,
         )
 
         event.updated_at = datetime.utcnow()

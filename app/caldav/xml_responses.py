@@ -1,6 +1,7 @@
 from lxml import etree
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Iterable
+import hashlib
 from app.config import settings
 
 
@@ -36,6 +37,34 @@ def add_propstat(response: etree.Element, status: str = "HTTP/1.1 200 OK") -> et
     return prop
 
 
+def add_sync_token(multistatus: etree.Element, token: str) -> None:
+    """Attach <d:sync-token> as a direct child of <d:multistatus>.
+
+    Required by RFC 6578 §3.4 on sync-collection REPORT responses; some clients
+    (e.g. the .NET Dav.Client) call .Single() on it and crash with
+    InvalidOperationException if absent.
+    """
+    token_elem = etree.SubElement(multistatus, f"{D}sync-token")
+    token_elem.text = token
+
+
+def compute_sync_token(calendar_id: int, events: Iterable) -> str:
+    """Opaque token that changes whenever the calendar's event set changes.
+
+    Hashes sorted (uid, updated_at) tuples so adds, updates, and deletes all
+    advance the token. Empty calendar yields a stable zero-state token.
+    Uses isoformat (microsecond precision) so rapid successive edits produce
+    distinct tokens.
+    """
+    items = sorted(
+        (e.uid, (e.updated_at or e.created_at).isoformat())
+        for e in events
+    )
+    state = "|".join(f"{u}@{t}" for u, t in items)
+    digest = hashlib.sha256(state.encode()).hexdigest()[:16]
+    return f"{settings.base_uri}/sync/cal{calendar_id}/{digest}"
+
+
 def add_principal_response(parent: etree.Element, href: str, principal_url: str) -> etree.Element:
     response = add_response(parent, href)
     prop = add_propstat(response)
@@ -68,34 +97,38 @@ def add_calendar_response(
     name: str,
     description: Optional[str] = None,
     color: str = "#3B82F6",
+    sync_token: Optional[str] = None,
 ) -> etree.Element:
     response = add_response(parent, href)
     prop = add_propstat(response)
-    
+
     resourcetype = etree.SubElement(prop, f"{D}resourcetype")
     etree.SubElement(resourcetype, f"{D}collection")
     etree.SubElement(resourcetype, f"{C}calendar")
-    
+
     displayname = etree.SubElement(prop, f"{D}displayname")
     displayname.text = name
-    
+
     if description:
         desc = etree.SubElement(prop, f"{D}description")
         desc.text = description
-    
+
     calendar_color = etree.SubElement(prop, f"{ICAL}calendar-color")
     calendar_color.text = color
-    
+
     supported_calendar_component = etree.SubElement(prop, f"{C}supported-calendar-component-set")
     comp = etree.SubElement(supported_calendar_component, f"{C}comp")
     comp.set("name", "VEVENT")
-    
+
+    # getctag and sync-token must stay in sync: clients compare getctag (or
+    # sync-token) between polls to decide whether to re-sync.
+    token = sync_token or f"{settings.base_uri}/sync/cal{calendar_id}/empty"
     getctag = etree.SubElement(prop, f"{CS}getctag")
-    getctag.text = f"calendar-{calendar_id}-1"
-    
-    sync_token = etree.SubElement(prop, f"{D}sync-token")
-    sync_token.text = f"{settings.base_uri}/sync/calendar-{calendar_id}-1"
-    
+    getctag.text = token
+
+    cal_sync_token = etree.SubElement(prop, f"{D}sync-token")
+    cal_sync_token.text = token
+
     return response
 
 

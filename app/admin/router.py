@@ -29,6 +29,48 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/admin/templates")
 
 
+def _resolve_client_tz(tz_name: Optional[str]) -> ZoneInfo:
+    # Browser sends IANA name via Intl.DateTimeFormat; fall back to instance default.
+    if not tz_name:
+        return settings.tz
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return settings.tz
+
+
+class _LocalEventView:
+    """Wraps an Event, exposing dtstart/dtend shifted into the viewer's tz.
+
+    The template reads ``event.dtstart.strftime('%Y-%m-%dT%H:%M')`` to populate
+    a ``datetime-local`` input. The stored DB value is naive UTC; without this
+    shift the form would show UTC wall-clock instead of the viewer's local time.
+    Other attributes are passed through unchanged.
+    """
+    def __init__(self, event, client_tz: ZoneInfo):
+        self._event = event
+        self._client_tz = client_tz
+
+    def __getattr__(self, name):
+        return getattr(self._event, name)
+
+    @property
+    def dtstart(self):
+        return self._event.dtstart.replace(tzinfo=timezone.utc).astimezone(self._client_tz)
+
+    @property
+    def dtend(self):
+        if self._event.dtend is None:
+            return None
+        return self._event.dtend.replace(tzinfo=timezone.utc).astimezone(self._client_tz)
+
+
+def _event_local_for_form(event, client_tz: ZoneInfo):
+    if event is None or event.is_all_day:
+        return event
+    return _LocalEventView(event, client_tz)
+
+
 def check_admin(user: User):
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -1122,30 +1164,34 @@ async def new_event_modal(
 async def edit_event_modal(
     event_id: int,
     request: Request,
+    tz: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
     event_service = EventService(db)
-    
+
     if not await event_service.can_edit_event(event_id, user.id):
         raise HTTPException(status_code=403, detail="Cannot edit this event")
-    
+
     event = await event_service.get_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     writable_ids = await event_service.get_writable_calendars(user.id)
     result = await db.execute(
         select(Calendar).where(Calendar.id.in_(writable_ids))
     )
     calendars = result.scalars().all()
-    
+
+    client_tz = _resolve_client_tz(tz)
+    event_local = _event_local_for_form(event, client_tz)
+
     return templates.TemplateResponse(
         "partials/event_modal.html",
         {
             "request": request,
             "user": user,
-            "event": event,
+            "event": event_local,
             "calendars": calendars,
             "default_date": None,
             "is_new": False,
@@ -1238,6 +1284,7 @@ async def create_event(
         rrule=rrule,
         is_all_day=is_all_day,
         color=color,
+        timezone=tz,
     )
     
     response = HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
@@ -1339,6 +1386,7 @@ async def update_event(
         rrule=rrule,
         is_all_day=is_all_day,
         color=color,
+        timezone=tz,
     )
     
     return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")

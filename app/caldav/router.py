@@ -14,6 +14,8 @@ from app.caldav.xml_responses import (
     add_principal_response,
     add_calendar_response,
     add_event_response,
+    add_sync_token,
+    compute_sync_token,
     xml_to_string,
 )
 from app.caldav.ics_parser import parse_ics, generate_ics
@@ -136,24 +138,24 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
     elif len(path_parts) >= 3 and path_parts[0] == "principals" and path_parts[2] == "calendars":
         result = await db.execute(
             select(Calendar)
-            .options(selectinload(Calendar.shares))
+            .options(selectinload(Calendar.shares), selectinload(Calendar.events))
             .where(Calendar.user_id == user.id)
         )
         owned_calendars = result.scalars().all()
-        
+
         result = await db.execute(
             select(CalendarShare)
-            .options(selectinload(CalendarShare.calendar))
+            .options(selectinload(CalendarShare.calendar).selectinload(Calendar.events))
             .where(CalendarShare.user_id == user.id)
         )
         shared = result.scalars().all()
         shared_calendars = [s.calendar for s in shared]
-        
+
         all_calendars = list(owned_calendars) + shared_calendars
-        
+
         if depth == "1":
             add_response(multistatus, f"/dav/principals/{user.username}/calendars/")
-        
+
         for cal in all_calendars:
             href = f"/dav/{user.username}/calendars/{cal.id}/"
             add_calendar_response(
@@ -163,6 +165,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
                 cal.name,
                 cal.description,
                 cal.color or "#3B82F6",
+                sync_token=compute_sync_token(cal.id, cal.events),
             )
     
     elif len(path_parts) >= 2 and path_parts[0] == "principals":
@@ -177,11 +180,16 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
             cal_id = int(path_parts[2])
         except ValueError:
             raise HTTPException(status_code=404)
-        
+
         calendar = await get_calendar_with_permission(cal_id, user, db)
         if not calendar:
             raise HTTPException(status_code=404)
-        
+
+        result = await db.execute(
+            select(Event).where(Event.calendar_id == calendar.id)
+        )
+        events_for_token = result.scalars().all()
+
         add_calendar_response(
             multistatus,
             f"/dav/{user.username}/calendars/{cal_id}/",
@@ -189,15 +197,11 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
             calendar.name,
             calendar.description,
             calendar.color or "#3B82F6",
+            sync_token=compute_sync_token(calendar.id, events_for_token),
         )
-        
+
         if depth == "1":
-            result = await db.execute(
-                select(Event).where(Event.calendar_id == calendar.id)
-            )
-            events = result.scalars().all()
-            
-            for event in events:
+            for event in events_for_token:
                 href = f"/dav/{user.username}/calendars/{cal_id}/{event.uid}.ics"
                 etag = hashlib.md5(event.raw_ics.encode()).hexdigest()
                 add_event_response(
@@ -214,24 +218,24 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
     elif len(path_parts) >= 2 and path_parts[1] == "calendars":
         result = await db.execute(
             select(Calendar)
-            .options(selectinload(Calendar.shares))
+            .options(selectinload(Calendar.shares), selectinload(Calendar.events))
             .where(Calendar.user_id == user.id)
         )
         owned_calendars = result.scalars().all()
-        
+
         result = await db.execute(
             select(CalendarShare)
-            .options(selectinload(CalendarShare.calendar))
+            .options(selectinload(CalendarShare.calendar).selectinload(Calendar.events))
             .where(CalendarShare.user_id == user.id)
         )
         shared = result.scalars().all()
         shared_calendars = [s.calendar for s in shared]
-        
+
         all_calendars = list(owned_calendars) + shared_calendars
-        
+
         if depth == "1":
             add_response(multistatus, f"/dav/{user.username}/calendars/")
-        
+
         for cal in all_calendars:
             href = f"/dav/{user.username}/calendars/{cal.id}/"
             add_calendar_response(
@@ -241,6 +245,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
                 cal.name,
                 cal.description,
                 cal.color or "#3B82F6",
+                sync_token=compute_sync_token(cal.id, cal.events),
             )
     
     return FastAPIResponse(
@@ -478,8 +483,8 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
         raise HTTPException(status_code=404)
     
     ics_content = body.decode("utf-8")
-    uid, summary, description, dtstart, dtend, location, rrule, color = parse_ics(ics_content)
-    
+    uid, summary, description, dtstart, dtend, location, rrule, color, event_tz = parse_ics(ics_content)
+
     result = await db.execute(
         select(Event).where(Event.calendar_id == calendar.id, Event.uid == uid)
     )
@@ -493,6 +498,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
         existing_event.location = location
         existing_event.rrule = rrule
         existing_event.color = color
+        existing_event.timezone = event_tz
         existing_event.raw_ics = ics_content
         existing_event.updated_at = datetime.utcnow()
         event = existing_event
@@ -507,6 +513,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
             location=location,
             color=color,
             rrule=rrule,
+            timezone=event_tz,
             raw_ics=ics_content,
         )
         db.add(event)
@@ -577,23 +584,23 @@ async def handle_delete(path_parts: list, user: User, db: AsyncSession):
 async def handle_report(request: Request, path_parts: list, body: bytes, user: User, db: AsyncSession):
     if len(path_parts) < 3 or path_parts[1] != "calendars":
         raise HTTPException(status_code=404)
-    
+
     try:
         cal_id = int(path_parts[2])
     except ValueError:
         raise HTTPException(status_code=404)
-    
+
     calendar = await get_calendar_with_permission(cal_id, user, db)
     if not calendar:
         raise HTTPException(status_code=404)
-    
-    multistatus = create_multistatus()
-    
+
     result = await db.execute(
         select(Event).where(Event.calendar_id == calendar.id)
     )
     events = result.scalars().all()
-    
+
+    multistatus = create_multistatus()
+
     for event in events:
         href = f"/dav/{user.username}/calendars/{cal_id}/{event.uid}.ics"
         etag = hashlib.md5(event.raw_ics.encode()).hexdigest()
@@ -607,7 +614,13 @@ async def handle_report(request: Request, path_parts: list, body: bytes, user: U
             etag,
             event.raw_ics,
         )
-    
+
+    # RFC 6578 §3.4: a sync-collection REPORT response MUST include a
+    # <sync-token> as a direct child of <multistatus>. Always include it
+    # (even for calendar-query / empty bodies) so strict clients that call
+    # .Single() on the token element never crash with InvalidOperationException.
+    add_sync_token(multistatus, compute_sync_token(cal_id, events))
+
     return FastAPIResponse(
         content=xml_to_string(multistatus),
         media_type="application/xml; charset=utf-8",

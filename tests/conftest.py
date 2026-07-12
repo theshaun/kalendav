@@ -128,6 +128,7 @@ async def make_event(db, calendar_id, **kw):
     rrule = kw.get("rrule")
     is_all_day = kw.get("is_all_day", False)
     color = kw.get("color")
+    timezone = kw.get("timezone")
     raw_ics = kw.get("raw_ics")
     if raw_ics is None:
         raw_ics = generate_ics(
@@ -140,6 +141,7 @@ async def make_event(db, calendar_id, **kw):
             rrule=rrule,
             is_all_day=is_all_day,
             color=color,
+            timezone=timezone,
         )
     event = Event(
         calendar_id=calendar_id,
@@ -151,6 +153,7 @@ async def make_event(db, calendar_id, **kw):
         location=location,
         color=color,
         rrule=rrule,
+        timezone=timezone,
         is_all_day=is_all_day,
         raw_ics=raw_ics,
     )

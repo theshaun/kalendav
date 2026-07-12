@@ -115,3 +115,52 @@ async def test_ics_feed_unknown_calendar_returns_404(client, db_session):
     _, plain = await make_api_key(db_session, owner.id, name="k")
     resp = await client.get("/ics/9999?api_key={plain}".replace("{plain}", plain))
     assert resp.status_code == 404
+
+
+# ---------- header-based auth (TRMNL compatibility) ----------
+
+@pytest.mark.asyncio
+async def test_ics_feed_x_api_key_header_auth(client, db_session):
+    owner = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, owner.id, name="C")
+    _, plain = await make_api_key(db_session, owner.id, name="k")
+    resp = await client.get(f"/ics/{cal.id}", headers={"X-API-Key": plain})
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ics_feed_bearer_token_auth(client, db_session):
+    owner = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, owner.id, name="C")
+    _, plain = await make_api_key(db_session, owner.id, name="k")
+    resp = await client.get(
+        f"/ics/{cal.id}",
+        headers={"Authorization": f"Bearer {plain}"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ics_feed_bearer_token_invalid_returns_401(client, db_session):
+    owner = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, owner.id, name="C")
+    resp = await client.get(
+        f"/ics/{cal.id}",
+        headers={"Authorization": "Bearer nonexistent-key"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_ics_feed_403_includes_calendar_id_in_detail(client, db_session):
+    owner = await make_user(db_session, username="alice", password="pw")
+    other = await make_user(db_session, username="bob", password="pw")
+    cal = await make_calendar(db_session, owner.id, name="C")
+    _, plain = await make_api_key(db_session, other.id, name="k")
+    resp = await client.get(f"/ics/{cal.id}?api_key={plain}")
+    assert resp.status_code == 403
+    # detail carries the calendar_id so the operator can match TRMNL errors to a calendar
+    body = resp.json()
+    assert body["detail"]["calendar_id"] == cal.id
+    assert body["detail"]["requesting_user_id"] == other.id
+    assert body["detail"]["error"] == "access_denied"

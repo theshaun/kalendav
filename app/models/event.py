@@ -22,6 +22,7 @@ class Event(Base):
     location: Mapped[str | None] = mapped_column(String(500), nullable=True)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     rrule: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     raw_ics: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

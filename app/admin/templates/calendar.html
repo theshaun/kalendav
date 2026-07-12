@@ -184,11 +184,14 @@
             if (viewType === 'dayGridMonth') {
                 dateParam = `?date=${date}`;
             } else {
+                // datetime-local needs local wall-clock YYYY-MM-DDTHH:MM, not UTC.
+                // toISOString() shifts to UTC and would pre-fill the form with the
+                // wrong time. Build the string from local components instead.
                 const startDate = new Date(date);
                 const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
-                const startStr = startDate.toISOString().slice(0, 16);
-                const endStr = endDate.toISOString().slice(0, 16);
-                dateParam = `?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`;
+                const pad = n => String(n).padStart(2, '0');
+                const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                dateParam = `?start=${encodeURIComponent(fmt(startDate))}&end=${encodeURIComponent(fmt(endDate))}`;
             }
         }
         htmx.ajax('GET', `/admin/calendar/events/new${dateParam}`, {
@@ -196,9 +199,10 @@
             swap: 'innerHTML'
         });
     }
-    
+
     function openEditEventModal(eventId) {
-        htmx.ajax('GET', `/admin/calendar/events/${eventId}`, {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        htmx.ajax('GET', `/admin/calendar/events/${eventId}?tz=${encodeURIComponent(tz)}`, {
             target: '#modal-container',
             swap: 'innerHTML'
         });
