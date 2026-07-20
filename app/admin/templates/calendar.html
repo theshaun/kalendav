@@ -3,261 +3,248 @@
 {% block title %}Calendar{% endblock %}
 
 {% block content %}
-<div class="mb-6 flex justify-between items-center">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Calendar</h1>
-    <div class="flex items-center gap-2">
-        <div class="relative" id="export-dropdown-container">
-            <button onclick="toggleExportDropdown()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                </svg>
-                Export
-            </button>
-            <div id="export-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 z-50">
-                {% for cal in calendars %}
-                <a href="/admin/calendar/export/{{ cal.id }}" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-800 dark:text-white text-sm first:rounded-t-lg last:rounded-b-lg">
-                    <span class="w-3 h-3 rounded-full" style="background-color: {{ cal.color }}"></span>
-                    {{ cal.name }}
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-        <button onclick="openImportModal()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-            </svg>
-            Import
-        </button>
-        <button onclick="openNewEventModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-            </svg>
-            New Event
-        </button>
+{# Action toolbar — Linear-style card above the calendar. #}
+<div class="bg-surface rounded-lg shadow-popover p-4 mb-4">
+  <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    {# Calendar legend — color dots + names. #}
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0">
+      <span class="text-overline text-text-tertiary uppercase tracking-wide mr-1">Calendars</span>
+      {% for cal in calendars %}
+      <span class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary">
+        <span class="inline-block h-2.5 w-2.5 rounded-full shrink-0" style="background-color: {{ cal.color or '#3B82F6' }}" aria-hidden="true"></span>
+        <span class="truncate max-w-[10rem]">{{ cal.name }}</span>
+      </span>
+      {% endfor %}
     </div>
+
+    {# Actions: New Event (primary), Import, Export dropdown. #}
+    <div class="flex items-center gap-2 shrink-0">
+      <button
+        type="button"
+        onclick="openNewEventModal()"
+        class="inline-flex items-center justify-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-3 py-2 rounded-md shadow-popover transition-colors duration-instant ease-out focus-visible:outline-none focus-visible:shadow-focus"
+      >
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        <span>New event</span>
+      </button>
+
+      <button
+        type="button"
+        onclick="openImportModal()"
+        class="inline-flex items-center justify-center gap-2 bg-surface border border-border-default text-text-primary hover:bg-elevated font-medium px-3 py-2 rounded-md transition-colors duration-instant ease-out focus-visible:outline-none focus-visible:shadow-focus"
+        aria-label="Import ICS file"
+      >
+        <i data-lucide="upload" class="h-4 w-4"></i>
+        <span class="hidden sm:inline">Import</span>
+      </button>
+
+      <div class="relative" id="export-dropdown-container">
+        <button
+          type="button"
+          onclick="toggleExportDropdown()"
+          class="inline-flex items-center justify-center gap-2 bg-surface border border-border-default text-text-primary hover:bg-elevated font-medium px-3 py-2 rounded-md transition-colors duration-instant ease-out focus-visible:outline-none focus-visible:shadow-focus"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          id="export-dropdown-trigger"
+        >
+          <i data-lucide="download" class="h-4 w-4"></i>
+          <span class="hidden sm:inline">Export</span>
+          <i data-lucide="chevron-down" class="h-3.5 w-3.5 text-text-tertiary"></i>
+        </button>
+        <div
+          id="export-dropdown"
+          class="hidden absolute right-0 mt-2 w-56 bg-elevated rounded-lg shadow-popover border border-border-default p-1 z-dropdown"
+          role="menu"
+          aria-labelledby="export-dropdown-trigger"
+        >
+          {% for cal in calendars %}
+          <a
+            href="/admin/calendar/export/{{ cal.id }}"
+            role="menuitem"
+            class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-hover text-body-sm text-text-primary transition-colors duration-instant"
+          >
+            <span class="inline-block h-2.5 w-2.5 rounded-full shrink-0" style="background-color: {{ cal.color or '#3B82F6' }}" aria-hidden="true"></span>
+            <span class="truncate">{{ cal.name }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div id="calendar" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4"></div>
+{# Calendar mount — wrapped in .calendar-app scope (calendar.css targets this). #}
+<div class="calendar-app bg-surface rounded-lg shadow-popover p-4">
+  <div id="calendar"></div>
+</div>
+{% endblock %}
 
-<div id="modal-container"></div>
+{% block scripts %}
+{# calendar.js exposes window.initCalendar as a side effect (see the
+   side-effect assignment at the bottom of that file). The chunk can't be
+   loaded via an inline `import { initCalendar } from "..."` because Vite's
+   static analyzer doesn't see HTML inline imports and would tree-shake
+   the named export away. Loading the chunk via <script src> and calling
+   the window global survives tree-shaking reliably. Module scripts
+   execute in document order, so this tag runs before the inline script
+   below. #}
+<script type="module" src="{{ 'app/static/src/calendar.js' | vite_asset }}"></script>
+<script type="module">
+  const initCalendar = window.initCalendar;
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/bootstrap5.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/rrule@2.6.4/dist/es5/rrule.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/rrule@6.1.10/index.global.min.js"></script>
+  const writableCalendarIds = {{ writable_calendar_ids | tojson }};
 
-<style>
-    .fc {
-        font-family: inherit;
-    }
-    .fc .fc-toolbar-title {
-        font-size: 1.25rem;
-        color: #1f2937;
-    }
-    .dark .fc .fc-toolbar-title {
-        color: #f3f4f6;
-    }
-    .fc .fc-button {
-        background-color: #3b82f6;
-        border-color: #3b82f6;
-    }
-    .fc .fc-button:hover {
-        background-color: #2563eb;
-        border-color: #2563eb;
-    }
-    .fc .fc-button-active {
-        background-color: #1d4ed8 !important;
-        border-color: #1d4ed8 !important;
-    }
-    .fc .fc-button:disabled {
-        background-color: #9ca3af;
-        border-color: #9ca3af;
-    }
-    .fc-theme-standard td, .fc-theme-standard th {
-        border-color: #e5e7eb;
-    }
-    .dark .fc-theme-standard td, .dark .fc-theme-standard th {
-        border-color: #374151;
-    }
-    .fc-theme-standard .fc-scrollgrid {
-        border-color: #e5e7eb;
-    }
-    .dark .fc-theme-standard .fc-scrollgrid {
-        border-color: #374151;
-    }
-    .fc .fc-daygrid-day.fc-day-today {
-        background-color: #eff6ff;
-    }
-    .dark .fc .fc-daygrid-day.fc-day-today {
-        background-color: #1e3a5f;
-    }
-    .fc .fc-col-header-cell-cushion {
-        color: #6b7280;
-    }
-    .dark .fc .fc-col-header-cell-cushion {
-        color: #9ca3af;
-    }
-    .fc .fc-daygrid-day-number, .fc .fc-daygrid-week-number {
-        color: #374151;
-    }
-    .dark .fc .fc-daygrid-day-number, .dark .fc .fc-daygrid-week-number {
-        color: #d1d5db;
-    }
-    .fc .fc-timegrid-slot-label-cushion {
-        color: #6b7280;
-    }
-    .dark .fc .fc-timegrid-slot-label-cushion {
-        color: #9ca3af;
-    }
-    .fc-event {
-        cursor: pointer;
-        border-radius: 4px;
-        padding: 1px 4px;
-    }
-    .fc-event-main {
-        padding: 1px;
-    }
-</style>
+  function isCalendarWritable(calendarId) {
+    return writableCalendarIds.includes(calendarId);
+  }
 
-<script>
-    const writableCalendarIds = {{ writable_calendar_ids | tojson }};
-    let calendar;
-    
-    function isCalendarWritable(calendarId) {
-        return writableCalendarIds.includes(calendarId);
-    }
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const calendarEl = document.getElementById('calendar');
-        
-        calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            firstDay: 1,
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            events: function(fetchInfo, successCallback, failureCallback) {
-                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                fetch(`/admin/calendar/events?start=${encodeURIComponent(fetchInfo.startStr)}&end=${encodeURIComponent(fetchInfo.endStr)}&tz=${encodeURIComponent(tz)}`)
-                    .then(response => response.json())
-                    .then(data => successCallback(data))
-                    .catch(error => failureCallback(error));
-            },
-            eventTimeFormat: {
-                hour: 'numeric',
-                minute: '2-digit',
-                meridiem: 'short'
-            },
-            slotLabelFormat: {
-                hour: 'numeric',
-                minute: '2-digit',
-                meridiem: 'short'
-            },
-            eventClick: function(info) {
-                if (isCalendarWritable(info.event.extendedProps.calendarId)) {
-                    openEditEventModal(info.event.id);
-                } else {
-                    alert('You do not have permission to edit this event.');
-                }
-            },
-            dateClick: function(info) {
-                openNewEventModal(info.dateStr, info.view.type);
-            },
-            eventDisplay: 'block',
-            displayEventTime: true,
-            eventDidMount: function(info) {
-                const color = info.event.extendedProps.color || info.event.extendedProps.calendarColor || '#3b82f6';
-                info.el.style.backgroundColor = color;
-                info.el.style.borderColor = color;
-            }
-        });
-        
-        calendar.render();
-    });
-    
-    function openNewEventModal(date, viewType) {
-        let dateParam = '';
-        if (date) {
-            if (viewType === 'dayGridMonth') {
-                dateParam = `?date=${date}`;
-            } else {
-                // datetime-local needs local wall-clock YYYY-MM-DDTHH:MM, not UTC.
-                // toISOString() shifts to UTC and would pre-fill the form with the
-                // wrong time. Build the string from local components instead.
-                const startDate = new Date(date);
-                const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
-                const pad = n => String(n).padStart(2, '0');
-                const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                dateParam = `?start=${encodeURIComponent(fmt(startDate))}&end=${encodeURIComponent(fmt(endDate))}`;
-            }
-        }
-        htmx.ajax('GET', `/admin/calendar/events/new${dateParam}`, {
-            target: '#modal-container',
-            swap: 'innerHTML'
-        });
-    }
-
-    function openEditEventModal(eventId) {
+  const calendar = initCalendar('calendar', {
+    initialView: 'dayGridMonth',
+    firstDay: 1,
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,timeGridDay'
+    },
+    // FullCalendar renders toolbar buttons with role="img" icons that axe-core
+    // flags as missing accessible names; the buttonText map propagates as
+    // aria-label on each <button>.
+    buttonText: {
+      prev: 'Previous',
+      next: 'Next',
+      today: 'Today',
+      dayGridMonth: 'Month',
+      timeGridWeek: 'Week',
+      timeGridDay: 'Day',
+    },
+    events: async function (fetchInfo, successCallback, failureCallback) {
+      try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        htmx.ajax('GET', `/admin/calendar/events/${eventId}?tz=${encodeURIComponent(tz)}`, {
-            target: '#modal-container',
-            swap: 'innerHTML'
+        const params = new URLSearchParams({
+          start: fetchInfo.startStr,
+          end: fetchInfo.endStr,
+          tz
         });
+        const res = await fetch(`/admin/calendar/events?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load events');
+        const events = await res.json();
+        successCallback(events);
+      } catch (e) {
+        failureCallback(e);
+      }
+    },
+    eventTimeFormat: {
+      hour: 'numeric',
+      minute: '2-digit',
+      meridiem: 'short'
+    },
+    slotLabelFormat: {
+      hour: 'numeric',
+      minute: '2-digit',
+      meridiem: 'short'
+    },
+    eventDidMount: function (info) {
+      const color = info.event.extendedProps.color
+        || info.event.extendedProps.calendarColor
+        || info.event.extendedProps.event_color;
+      if (color) {
+        info.el.style.backgroundColor = color;
+        info.el.style.borderColor = color;
+      }
+    },
+    dateClick: function (info) {
+      openNewEventModal(info.dateStr, info.view.type);
+    },
+    eventClick: function (info) {
+      const calendarId = info.event.extendedProps.calendarId
+        ?? info.event.extendedProps.calendar_id;
+      if (isCalendarWritable(calendarId)) {
+        openEditModal(info.event.id);
+      } else {
+        alert('You do not have permission to edit this event.');
+      }
+    },
+    eventDisplay: 'block',
+    displayEventTime: true,
+  });
+
+  // ---- Page-local modal openers (HTMX contract preserved) -----------------
+
+  function openNewEventModal(date, viewType) {
+    let dateParam = '';
+    if (date) {
+      if (viewType === 'dayGridMonth') {
+        dateParam = `?date=${date}`;
+      } else {
+        // datetime-local wants local YYYY-MM-DDTHH:MM, not UTC. Build from
+        // local components so the form pre-fill matches what the user clicked.
+        const startDate = new Date(date);
+        const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+        const pad = n => String(n).padStart(2, '0');
+        const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        dateParam = `?start=${encodeURIComponent(fmt(startDate))}&end=${encodeURIComponent(fmt(endDate))}`;
+      }
     }
-    
-    function closeModal() {
-        document.getElementById('modal-container').innerHTML = '';
-    }
-    
-    function openImportModal() {
-        htmx.ajax('GET', '/admin/calendar/import', {
-            target: '#modal-container',
-            swap: 'innerHTML'
-        });
-    }
-    
-    function toggleExportDropdown() {
-        document.getElementById('export-dropdown').classList.toggle('hidden');
-    }
-    
-    document.addEventListener('click', function(e) {
-        const container = document.getElementById('export-dropdown-container');
-        if (container && !container.contains(e.target)) {
-            document.getElementById('export-dropdown').classList.add('hidden');
-        }
+    htmx.ajax('GET', `/admin/calendar/events/new${dateParam}`, {
+      target: '#modal-container',
+      swap: 'innerHTML'
     });
-    
-    function refreshCalendar() {
-        if (calendar) {
-            calendar.refetchEvents();
-        }
+  }
+
+  function openEditModal(eventId) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    htmx.ajax('GET', `/admin/calendar/events/${eventId}?tz=${encodeURIComponent(tz)}`, {
+      target: '#modal-container',
+      swap: 'innerHTML'
+    });
+  }
+
+  function openImportModal() {
+    htmx.ajax('GET', '/admin/calendar/import', {
+      target: '#modal-container',
+      swap: 'innerHTML'
+    });
+  }
+
+  function toggleExportDropdown() {
+    const dd = document.getElementById('export-dropdown');
+    const trigger = document.getElementById('export-dropdown-trigger');
+    const open = dd.classList.toggle('hidden');
+    trigger.setAttribute('aria-expanded', String(!open));
+  }
+
+  // Close export dropdown on outside click.
+  document.addEventListener('click', function (e) {
+    const container = document.getElementById('export-dropdown-container');
+    if (!container) return;
+    if (!container.contains(e.target)) {
+      const dd = document.getElementById('export-dropdown');
+      const trigger = document.getElementById('export-dropdown-trigger');
+      if (dd) dd.classList.add('hidden');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
     }
-    
-    // Listen for custom event to refresh calendar
-    document.body.addEventListener('eventCreated', function() {
-        closeModal();
-        refreshCalendar();
-    });
-    
-    // HTMX event handlers for calendar refresh
-    document.body.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.successful) {
-            const path = evt.detail.pathInfo.requestPath;
-            if (path.includes('/admin/calendar/events') && (evt.detail.verb === 'POST' || evt.detail.verb === 'PUT' || evt.detail.verb === 'DELETE')) {
-                closeModal();
-                refreshCalendar();
-            }
-        }
-    });
-    
-    // Handle ESC key to close modal
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeModal();
-        }
-    });
+  });
+
+  // Expose page-local handlers to inline onclick= attributes.
+  window.openNewEventModal = openNewEventModal;
+  window.openEditModal = openEditModal;
+  window.openImportModal = openImportModal;
+  window.toggleExportDropdown = toggleExportDropdown;
+
+  // After event mutations the server returns an inline <script> that calls
+  // closeModal(); refreshCalendar();. Both live on window via main.js; refresh
+  // delegates to window.calendar.refetchEvents().
+  document.body.addEventListener('htmx:afterRequest', function (evt) {
+    if (!evt.detail.successful) return;
+    const path = evt.detail.pathInfo.requestPath;
+    const verb = evt.detail.verb;
+    if (
+      path.includes('/admin/calendar/events')
+      && (verb === 'POST' || verb === 'PUT' || verb === 'DELETE')
+    ) {
+      if (typeof window.closeModal === 'function') window.closeModal();
+      if (typeof window.refreshCalendar === 'function') window.refreshCalendar();
+    }
+  });
 </script>
 {% endblock %}
