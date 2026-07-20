@@ -1,0 +1,260 @@
+/* KalenDAV FullCalendar theme. Wave 5.
+ *
+ * Overrides fc-theme-standard under .calendar-app so the calendar shares the
+ * Linear aesthetic with the rest of the shell. Bootstrap 5 stylesheet is
+ * dropped entirely. Loaded via `import './calendar.css'` from calendar.js so
+ * the styles travel with the bundle (cssCodeSplit:false merges them into
+ * style.css at build time).
+ *
+ * All values trace to DESIGN.md §2/§6 tokens. The .dark class on <html>
+ * already flips every CSS variable in main.css, so this file is mode-agnostic.
+ */
+
+.calendar-app {
+  /* Page and surface */
+  --fc-page-bg-color: var(--color-bg-surface);
+  --fc-neutral-bg-color: var(--color-bg-canvas);
+  --fc-neutral-skeleton-bg-color: rgba(255, 255, 255, 0.04);
+  --fc-non-business-color: rgba(0, 0, 0, 0.18);
+
+  /* Borders */
+  --fc-border-color: var(--color-border-subtle);
+
+  /* Today + now */
+  --fc-today-bg-color: rgba(59, 130, 246, 0.06);
+  --fc-now-indicator-color: var(--color-accent-500);
+
+  /* Toolbar buttons — match the secondary button token */
+  --fc-button-bg-color: transparent;
+  --fc-button-border-color: var(--color-border-default);
+  --fc-button-text-color: var(--color-text-secondary);
+  --fc-button-hover-bg-color: var(--color-bg-hover);
+  --fc-button-hover-border-color: var(--color-border-default);
+  --fc-button-active-bg-color: var(--color-bg-hover);
+  --fc-button-active-border-color: var(--color-accent-500);
+
+  /* Events — default; overridden inline per calendar via eventDidMount */
+  --fc-event-bg-color: var(--color-cal-accent);
+  --fc-event-border-color: transparent;
+  --fc-event-text-color: #ffffff;
+  --fc-event-selected-overlay-color: rgba(0, 0, 0, 0.15);
+
+  /* Misc */
+  --fc-highlight-color: rgba(59, 130, 246, 0.10);
+  --fc-resizer-color: rgba(255, 255, 255, 0.60);
+  --fc-bg-event-color: var(--color-cal-violet);
+
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+
+/* --- Toolbar ------------------------------------------------------------- */
+
+.calendar-app .fc-toolbar-title {
+  font-size: var(--text-h3);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.calendar-app .fc-toolbar-chunk .fc-button-group {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.calendar-app .fc-button {
+  text-transform: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  line-height: 1;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color var(--duration-instant) var(--ease-out),
+    border-color var(--duration-instant) var(--ease-out),
+    color var(--duration-instant) var(--ease-out);
+}
+
+.calendar-app .fc-button:hover:not(:disabled),
+.calendar-app .fc-button:focus:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+.calendar-app .fc-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.calendar-app .fc-button-active {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-accent-500);
+  color: var(--color-accent-500);
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+}
+
+.calendar-app .fc-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.calendar-app .fc-button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.calendar-app .fc-button-primary {
+  background-color: transparent;
+  border-color: var(--color-border-default);
+}
+
+/* --- Header cells + day numbers ------------------------------------------ */
+
+.calendar-app .fc-col-header-cell-cushion {
+  font-size: var(--text-overline);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  padding: var(--space-2) var(--space-1);
+}
+
+.calendar-app .fc-daygrid-day-number,
+.calendar-app .fc-daygrid-week-number {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  text-decoration: none;
+  font-size: var(--text-body-sm);
+}
+
+.calendar-app .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  /* accent-500 (#3B82F6) reads 3.44:1 on the today-bg tint; accent-600
+     (#2563eb) reads 4.87:1 — passes WCAG AA for the 14px day number. */
+  color: var(--color-accent-600);
+  font-weight: 600;
+}
+
+/* --- Time-grid slot labels ---------------------------------------------- */
+
+.calendar-app .fc-timegrid-slot-label-cushion {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  font-weight: 400;
+}
+
+/* --- Today + day hover --------------------------------------------------- */
+
+.calendar-app .fc .fc-daygrid-day.fc-day-today,
+.calendar-app .fc .fc-timegrid-col.fc-day-today {
+  background-color: var(--fc-today-bg-color);
+}
+
+.calendar-app .fc-daygrid-day,
+.calendar-app .fc-timegrid-col-lane {
+  transition: background-color var(--duration-instant) var(--ease-out);
+}
+
+.calendar-app .fc-daygrid-day:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.calendar-app .fc .fc-timegrid-now-indicator-line {
+  border-color: var(--fc-now-indicator-color);
+}
+
+.calendar-app .fc .fc-timegrid-now-indicator-arrow {
+  border-color: var(--fc-now-indicator-color);
+}
+
+/* --- Events -------------------------------------------------------------- */
+
+.calendar-app .fc-event {
+  border-radius: var(--radius-sm);
+  border: none;
+  font-size: var(--text-label);
+  font-weight: 500;
+  padding: 1px 6px;
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--fc-event-bg-color) 92%, #ffffff 8%),
+    var(--fc-event-bg-color)
+  );
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.20);
+  cursor: pointer;
+  transition:
+    transform var(--duration-instant) var(--ease-out),
+    box-shadow var(--duration-instant) var(--ease-out);
+}
+
+.calendar-app .fc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.30);
+}
+
+.calendar-app .fc-event-main {
+  padding: 1px 4px;
+  color: var(--fc-event-text-color);
+}
+
+.calendar-app .fc-event-selected,
+.calendar-app .fc-event:focus {
+  box-shadow: var(--shadow-focus);
+}
+
+.calendar-app .fc-event-title {
+  font-weight: 500;
+}
+
+/* --- Scrollbars (webkit + firefox) -------------------------------------- */
+
+.calendar-app .fc-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-subtle) transparent;
+}
+
+.calendar-app .fc-scroller::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.calendar-app .fc-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.calendar-app .fc-scroller::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.calendar-app .fc-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-border-default);
+}
+
+/* --- Misc surface polish ------------------------------------------------- */
+
+.calendar-app .fc-scrollgrid,
+.calendar-app .fc-scrollgrid-section > td,
+.calendar-app .fc-scrollgrid-section > th,
+.calendar-app .fc-theme-standard td,
+.calendar-app .fc-theme-standard th {
+  border-color: var(--color-border-subtle);
+}
+
+.calendar-app .fc .fc-scrollgrid-section-sticky > th {
+  background-color: var(--color-bg-surface);
+}
+
+.calendar-app .fc-daygrid-day.fc-day.fc-day-other,
+.calendar-app .fc .fc-timegrid-col.fc-day-past {
+  background-color: var(--color-bg-canvas);
+}
+
+.calendar-app .fc .fc-timegrid-now-indicator-line + .fc-timegrid-now-indicator-arrow {
+  color: var(--fc-now-indicator-color);
+}
