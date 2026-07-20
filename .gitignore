@@ -38,3 +38,9 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+
+# Frontend build artifacts (Wave 2 Vite pipeline)
+node_modules/
+app/static/dist/
+*.tsbuildinfo
+.vite/

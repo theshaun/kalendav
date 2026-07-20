@@ -14,9 +14,13 @@ venv
 .idea
 .vscode
 *.md
+*.log
 tests
 .pytest_cache
 .coverage
 htmlcov
 .mypy_cache
 .ruff_cache
+.npm
+app/static/dist
+.vite
