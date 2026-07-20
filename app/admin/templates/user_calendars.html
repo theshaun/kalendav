@@ -1,97 +1,150 @@
-{% extends "user_base.html" %}
+{% extends "base.html" %}
 {% block title %}My Calendars{% endblock %}
 
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">My Calendars</h1>
-    <a href="/admin/my-calendars/create" class="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-        Create Calendar
+{# Page header. #}
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h2 class="text-h2 text-text-primary">My Calendars</h2>
+    <p class="mt-1 text-body-sm text-text-secondary">Calendars you own and those shared with you.</p>
+  </div>
+  <a
+    href="/admin/my-calendars/create"
+    class="inline-flex items-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+  >
+    <i data-lucide="plus" class="h-4 w-4"></i>
+    New calendar
+  </a>
+</div>
+
+{# Owned calendars — Linear-style rows. calendar.color is server-side, allowed in inline style per spec. #}
+<section class="mb-8">
+  <h3 class="text-overline uppercase text-text-secondary mb-3 px-1">Owned</h3>
+  {% if calendars %}
+  <div class="bg-surface rounded-lg border border-border-default shadow-popover overflow-hidden">
+    <div class="grid grid-cols-12 gap-4 px-6 py-3 text-overline uppercase text-text-tertiary border-b border-border-subtle">
+      <div class="col-span-6">Name</div>
+      <div class="col-span-4 hidden md:block">Description</div>
+      <div class="col-span-1 hidden md:block text-right">Shares</div>
+      <div class="col-span-6 md:col-span-1 text-right">Actions</div>
+    </div>
+    {% for calendar in calendars %}
+    <div class="grid grid-cols-12 gap-4 px-6 py-3 items-center border-t border-border-subtle hover:bg-hover transition-colors duration-fast ease-out">
+      <div class="col-span-6 flex items-center gap-3 min-w-0">
+        <span class="inline-block h-2.5 w-2.5 rounded-full shrink-0" style="background-color: {{ calendar.color or 'var(--color-cal-accent)' }}" aria-hidden="true"></span>
+        <span class="text-body-sm font-medium text-text-primary truncate">{{ calendar.name }}</span>
+      </div>
+      <div class="col-span-4 hidden md:block text-body-sm text-text-secondary truncate">
+        {{ calendar.description or '—' }}
+      </div>
+      <div class="col-span-1 hidden md:block text-right text-body-sm text-text-tertiary tabular-nums">
+        {{ calendar.shares | length }}
+      </div>
+      <div class="col-span-6 md:col-span-1 flex items-center justify-end gap-1">
+        <a
+          href="/admin/my-calendars/{{ calendar.id }}/edit"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Edit {{ calendar.name }}"
+          title="Edit"
+        >
+          <i data-lucide="pencil" class="h-4 w-4"></i>
+        </a>
+        <a
+          href="/admin/my-calendars/{{ calendar.id }}/shares"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Manage shares for {{ calendar.name }}"
+          title="Shares"
+        >
+          <i data-lucide="users" class="h-4 w-4"></i>
+        </a>
+        <form action="/admin/my-calendars/{{ calendar.id }}/delete" method="post" class="inline">
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center h-8 w-8 rounded-md text-danger hover:bg-danger/10 transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+            aria-label="Delete {{ calendar.name }}"
+            title="Delete"
+            onclick="return confirm('Delete this calendar? Its events will be lost.')"
+          >
+            <i data-lucide="trash-2" class="h-4 w-4"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-surface rounded-lg border border-border-default shadow-popover p-12 text-center">
+    <i data-lucide="calendar-plus" class="h-8 w-8 text-text-tertiary mx-auto mb-3"></i>
+    <h4 class="text-h3 text-text-primary">No calendars yet</h4>
+    <p class="mt-1 text-body-sm text-text-secondary">Create your first calendar to start scheduling.</p>
+    <a
+      href="/admin/my-calendars/create"
+      class="mt-5 inline-flex items-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+    >
+      <i data-lucide="plus" class="h-4 w-4"></i>
+      New calendar
     </a>
-</div>
+  </div>
+  {% endif %}
+</section>
 
-{% if calendars %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
-    <h2 class="px-6 py-4 bg-gray-50 dark:bg-gray-700 text-lg font-semibold text-gray-700 dark:text-gray-200">Owned Calendars</h2>
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Shares</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {% for calendar in calendars %}
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full" style="background-color: {{ calendar.color or '#3B82F6' }}"></span>
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ calendar.name }}</span>
-                    </div>
-                </td>
-                <td class="px-6 py-4">
-                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ calendar.description or '-' }}</div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ calendar.shares|length }} shares
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-3">
-                    <a href="/admin/my-calendars/{{ calendar.id }}/edit" class="text-blue-600 dark:text-blue-400 hover:underline">Edit</a>
-                    <a href="/admin/my-calendars/{{ calendar.id }}/shares" class="text-green-600 dark:text-green-400 hover:underline">Shares</a>
-                    <form action="/admin/my-calendars/{{ calendar.id }}/delete" method="post" class="inline">
-                        <button type="submit" class="text-red-600 dark:text-red-400 hover:underline" onclick="return confirm('Delete this calendar?')">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
-
-{% if shared_calendars %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-    <h2 class="px-6 py-4 bg-gray-50 dark:bg-gray-700 text-lg font-semibold text-gray-700 dark:text-gray-200">Shared With Me</h2>
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Owner</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Permission</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {% for item in shared_calendars %}
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full" style="background-color: {{ item.calendar.color or '#3B82F6' }}"></span>
-                        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ item.calendar.name }}</span>
-                    </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ item.owner.username }}
-                </td>
-                <td class="px-6 py-4">
-                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ item.calendar.description or '-' }}</div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="px-2 py-1 text-xs rounded {% if item.permission == 'read' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200{% elif item.permission == 'write' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{% endif %}">
-                        {{ item.permission }}
-                    </span>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
-
-{% if not calendars and not shared_calendars %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <p class="text-gray-500 dark:text-gray-400">You don't have any calendars yet. <a href="/admin/my-calendars/create" class="text-blue-600 dark:text-blue-400 hover:underline">Create one</a>.</p>
-</div>
-{% endif %}
+{# Shared with me — owner + permission badge instead of actions. #}
+<section>
+  <h3 class="text-overline uppercase text-text-secondary mb-3 px-1">Shared with me</h3>
+  {% if shared_calendars %}
+  <div class="bg-surface rounded-lg border border-border-default shadow-popover overflow-hidden">
+    <div class="grid grid-cols-12 gap-4 px-6 py-3 text-overline uppercase text-text-tertiary border-b border-border-subtle">
+      <div class="col-span-6">Name</div>
+      <div class="col-span-3 hidden md:block">Owner</div>
+      <div class="col-span-3 hidden md:block">Permission</div>
+      <div class="col-span-6 md:col-span-3 text-right md:text-left">
+        <span class="md:hidden">Owner / Permission</span>
+      </div>
+    </div>
+    {% for item in shared_calendars %}
+    <div class="grid grid-cols-12 gap-4 px-6 py-3 items-center border-t border-border-subtle hover:bg-hover transition-colors duration-fast ease-out">
+      <div class="col-span-6 flex items-center gap-3 min-w-0">
+        <span class="inline-block h-2.5 w-2.5 rounded-full shrink-0" style="background-color: {{ item.calendar.color or 'var(--color-cal-accent)' }}" aria-hidden="true"></span>
+        <span class="text-body-sm font-medium text-text-primary truncate">{{ item.calendar.name }}</span>
+      </div>
+      <div class="col-span-3 hidden md:block text-body-sm text-text-secondary truncate">
+        {{ item.owner.username }}
+      </div>
+      <div class="col-span-3 hidden md:block">
+        {% if item.permission == 'read' %}
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-read bg-perm-read/15 border border-perm-read/30">
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-read"></span>Read
+        </span>
+        {% elif item.permission == 'write' %}
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-write bg-perm-write/15 border border-perm-write/30">
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-write"></span>Write
+        </span>
+        {% else %}
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-admin bg-danger-bg border border-perm-admin">
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-admin"></span>Admin
+        </span>
+        {% endif %}
+      </div>
+      {# Mobile: stacked owner/permission. #}
+      <div class="col-span-6 md:hidden flex flex-col items-end gap-1">
+        <span class="text-body-sm text-text-secondary">{{ item.owner.username }}</span>
+        {% if item.permission == 'read' %}
+        <span class="text-overline uppercase tracking-wide text-perm-read">Read</span>
+        {% elif item.permission == 'write' %}
+        <span class="text-overline uppercase tracking-wide text-perm-write">Write</span>
+        {% else %}
+        <span class="text-overline uppercase tracking-wide text-perm-admin">Admin</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-surface rounded-lg border border-border-default shadow-popover p-12 text-center">
+    <i data-lucide="share-2" class="h-8 w-8 text-text-tertiary mx-auto mb-3"></i>
+    <h4 class="text-h3 text-text-primary">Nothing shared with you</h4>
+    <p class="mt-1 text-body-sm text-text-secondary">Calendars other users share with you will appear here.</p>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

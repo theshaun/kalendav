@@ -1,77 +1,154 @@
-{% extends "user_base.html" %}
+{% extends "base.html" %}
 {% block title %}Manage Shares{% endblock %}
 
 {% block content %}
+{# Back link. #}
 <div class="mb-6">
-    <a href="/admin/my-calendars" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to My Calendars</a>
+  <a
+    href="/admin/my-calendars"
+    class="inline-flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none rounded-md"
+  >
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Back to My Calendars
+  </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">{{ calendar.name }}</h1>
-    <p class="text-gray-600 dark:text-gray-400">Manage who can access this calendar</p>
+{# Calendar header — colored dot + name. #}
+<div class="bg-surface rounded-lg border border-border-default shadow-popover p-6 mb-6">
+  <div class="flex items-center gap-3">
+    <span class="inline-block h-3 w-3 rounded-full shrink-0" style="background-color: {{ calendar.color or 'var(--color-cal-accent)' }}" aria-hidden="true"></span>
+    <h2 class="text-h2 text-text-primary">{{ calendar.name }}</h2>
+  </div>
+  <p class="mt-1 text-body-sm text-text-secondary">Decide who can see or edit this calendar.</p>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Add Share</h2>
-    
-    <form action="/admin/my-calendars/{{ calendar.id }}/shares" method="post" class="flex gap-4">
-        <select name="user_id" required class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">Select User</option>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+  {# Add share form — left column on desktop, full width on mobile. #}
+  <div class="lg:col-span-2">
+    <div class="bg-surface rounded-lg border border-border-default shadow-popover p-6">
+      <div class="flex items-center gap-2 mb-1">
+        <i data-lucide="user-plus" class="h-4 w-4 text-text-tertiary"></i>
+        <h3 class="text-h3 text-text-primary">Add share</h3>
+      </div>
+      <p class="text-body-sm text-text-secondary mb-4">Grant another user access to this calendar.</p>
+
+      {# Server contract: POST /admin/my-calendars/{calendar_id}/shares with user_id + permission. #}
+      <form action="/admin/my-calendars/{{ calendar.id }}/shares" method="post" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="user_id" class="block text-body-sm font-medium text-text-primary">User</label>
+          <select
+            id="user_id"
+            name="user_id"
+            required
+            class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+          >
+            <option value="">Select a user…</option>
             {% for u in users %}
             {% if u.id != calendar.user_id %}
             <option value="{{ u.id }}">{{ u.username }}</option>
             {% endif %}
             {% endfor %}
-        </select>
-        
-        <select name="permission" required class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="read">Read Only</option>
-            <option value="write">Read & Write</option>
-            <option value="admin">Full Access</option>
-        </select>
-        
-        <button type="submit" class="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-            Add
-        </button>
-    </form>
-</div>
+          </select>
+        </div>
 
-{% if shares %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Permission</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {% for share in shares %}
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {{ share.user.username }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ share.permission }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ share.created_at.strftime('%Y-%m-%d') }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <form action="/admin/my-shares/{{ share.id }}/delete" method="post" class="inline">
-                        <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300" onclick="return confirm('Remove this share?')">Remove</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <div class="space-y-1.5">
+          <span class="block text-body-sm font-medium text-text-primary">Permission</span>
+          <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Permission">
+            <label class="relative cursor-pointer">
+              <input type="radio" name="permission" value="read" required class="peer absolute opacity-0 inset-0">
+              <div class="px-3 py-2 rounded-md border border-border-input bg-canvas text-body-sm text-text-secondary text-center transition-colors duration-instant ease-out peer-checked:border-accent-500 peer-checked:bg-accent-500/10 peer-checked:text-accent-600 dark:peer-checked:text-accent-400 hover:bg-hover peer-focus-visible:shadow-focus">
+                Read
+              </div>
+            </label>
+            <label class="relative cursor-pointer">
+              <input type="radio" name="permission" value="write" class="peer absolute opacity-0 inset-0">
+              <div class="px-3 py-2 rounded-md border border-border-input bg-canvas text-body-sm text-text-secondary text-center transition-colors duration-instant ease-out peer-checked:border-accent-500 peer-checked:bg-accent-500/10 peer-checked:text-accent-600 dark:peer-checked:text-accent-400 hover:bg-hover peer-focus-visible:shadow-focus">
+                Write
+              </div>
+            </label>
+            <label class="relative cursor-pointer">
+              <input type="radio" name="permission" value="admin" class="peer absolute opacity-0 inset-0">
+              <div class="px-3 py-2 rounded-md border border-border-input bg-canvas text-body-sm text-text-secondary text-center transition-colors duration-instant ease-out peer-checked:border-accent-500 peer-checked:bg-accent-500/10 peer-checked:text-accent-600 dark:peer-checked:text-accent-400 hover:bg-hover peer-focus-visible:shadow-focus">
+                Admin
+              </div>
+            </label>
+          </div>
+          <p class="text-body-sm text-text-tertiary">Read = view only · Write = view + edit · Admin = manage shares.</p>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full inline-flex items-center justify-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+        >
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Add share
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# Current shares — Linear-style row list. #}
+  <div class="lg:col-span-3">
+    <div class="bg-surface rounded-lg border border-border-default shadow-popover overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
+        <h3 class="text-h3 text-text-primary">Current shares</h3>
+        {% if shares %}
+        <span class="text-overline uppercase text-text-tertiary tabular-nums">{{ shares | length }}</span>
+        {% endif %}
+      </div>
+      {% if shares %}
+      <div class="grid grid-cols-12 gap-4 px-6 py-3 text-overline uppercase text-text-tertiary border-b border-border-subtle">
+        <div class="col-span-5">User</div>
+        <div class="col-span-4">Permission</div>
+        <div class="col-span-3 text-right">Actions</div>
+      </div>
+      {% for share in shares %}
+      <div class="grid grid-cols-12 gap-4 px-6 py-3 items-center border-t border-border-subtle hover:bg-hover transition-colors duration-fast ease-out">
+        <div class="col-span-5 flex items-center gap-3 min-w-0">
+          <span class="inline-flex items-center justify-center h-7 w-7 rounded-full bg-elevated text-overline uppercase text-text-secondary shrink-0">
+            {{ share.user.username | first | upper }}
+          </span>
+          <span class="text-body-sm font-medium text-text-primary truncate">{{ share.user.username }}</span>
+        </div>
+        <div class="col-span-4">
+          {# SharePermission is a str-enum — direct string comparison works. #}
+          {% if share.permission == 'read' %}
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-read bg-perm-read/15 border border-perm-read/30">
+            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-read"></span>Read
+          </span>
+          {% elif share.permission == 'write' %}
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-write bg-perm-write/15 border border-perm-write/30">
+            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-write"></span>Write
+          </span>
+          {% else %}
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-overline uppercase tracking-wide text-perm-admin bg-perm-admin/15 border border-perm-admin/30">
+            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-admin"></span>Admin
+          </span>
+          {% endif %}
+        </div>
+        <div class="col-span-3 flex items-center justify-end">
+          {# Server contract: POST /admin/my-shares/{share_id}/delete. #}
+          <form action="/admin/my-shares/{{ share.id }}/delete" method="post" class="inline">
+            <button
+              type="submit"
+              class="inline-flex items-center gap-1.5 text-danger hover:bg-danger/10 text-body-sm font-medium px-2.5 py-1.5 rounded-md transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+              onclick="return confirm('Remove share for {{ share.user.username }}?')"
+            >
+              <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+              Remove
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="p-12 text-center">
+        <i data-lucide="users" class="h-8 w-8 text-text-tertiary mx-auto mb-3"></i>
+        <h4 class="text-h3 text-text-primary">No shares yet</h4>
+        <p class="mt-1 text-body-sm text-text-secondary">Use the form to give someone access to this calendar.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 </div>
-{% else %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <p class="text-gray-500 dark:text-gray-400">No shares yet. Add a share above to give someone access to this calendar.</p>
-</div>
-{% endif %}
 {% endblock %}

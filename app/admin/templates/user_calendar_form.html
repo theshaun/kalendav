@@ -1,35 +1,187 @@
-{% extends "user_base.html" %}
+{% extends "base.html" %}
 {% block title %}{% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}{% endblock %}
 
 {% block content %}
+{# Back link — quiet ghost button. #}
 <div class="mb-6">
-    <a href="/admin/my-calendars" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to My Calendars</a>
+  <a
+    href="/admin/my-calendars"
+    class="inline-flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none rounded-md"
+  >
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Back to My Calendars
+  </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-lg">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">{% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}</h1>
-    
-    <form action="/admin/my-calendars/{% if calendar %}{{ calendar.id }}/edit{% else %}create{% endif %}" method="post" class="space-y-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input type="text" name="name" required value="{% if calendar %}{{ calendar.name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500">{% if calendar %}{{ calendar.description or '' }}{% endif %}</textarea>
-        </div>
-        
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
-            <input type="color" name="color" value="{% if calendar %}{{ calendar.color }}{% else %}#3B82F6{% endif %}" class="w-full h-10 px-1 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        
-        <div class="pt-4">
-            <button type="submit" class="w-full bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-                {% if calendar %}Save Changes{% else %}Create Calendar{% endif %}
-            </button>
-        </div>
-    </form>
+<div class="bg-surface rounded-lg border border-border-default shadow-popover p-6 max-w-lg">
+  <div class="mb-6">
+    <h2 class="text-h2 text-text-primary">{% if calendar %}Edit calendar{% else %}Create calendar{% endif %}</h2>
+    <p class="mt-1 text-body-sm text-text-secondary">Calendars organize events by color and ownership.</p>
+  </div>
+
+  {# Preserve server contract: POST to /admin/my-calendars/create OR /admin/my-calendars/{id}/edit.
+     Field names: name, description, color (hex string). #}
+  <form action="/admin/my-calendars/{% if calendar %}{{ calendar.id }}/edit{% else %}create{% endif %}" method="post" class="space-y-5">
+    <div class="space-y-1.5">
+      <label for="name" class="block text-body-sm font-medium text-text-primary">Name</label>
+      <input
+        type="text"
+        id="name"
+        name="name"
+        required
+        value="{% if calendar %}{{ calendar.name }}{% endif %}"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary placeholder:text-text-tertiary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+        placeholder="Personal, Work, Family…"
+      >
+    </div>
+
+    <div class="space-y-1.5">
+      <label for="description" class="block text-body-sm font-medium text-text-primary">Description <span class="text-text-tertiary font-normal">(optional)</span></label>
+      <textarea
+        id="description"
+        name="description"
+        rows="3"
+        class="w-full px-3 py-2 rounded-md bg-canvas border border-border-input text-text-primary placeholder:text-text-tertiary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none resize-y"
+        placeholder="A short note about this calendar"
+      >{% if calendar %}{{ calendar.description or '' }}{% endif %}</textarea>
+    </div>
+
+    {# Color picker — preset swatches mapped to DESIGN.md calendar palette tokens.
+       Each button uses the bg-calendar-* token for visual; the underlying hex
+       is resolved from the CSS variable at runtime so the DB column still
+       receives a hex string. #}
+    <div class="space-y-1.5">
+      <span class="block text-body-sm font-medium text-text-primary">Color</span>
+      <p class="text-body-sm text-text-tertiary">Used for event chips across the calendar view.</p>
+      <div
+        id="colorSwatches"
+        class="grid grid-cols-6 gap-2"
+        role="radiogroup"
+        aria-label="Calendar color"
+        data-color-input="color"
+      >
+        {# 6 DESIGN.md palette colors. The first swatch is the brand accent and the default.
+           data-token = Tailwind/CSS variable name; JS resolves it to the hex the server stores. #}
+        <button type="button" role="radio" aria-checked="false" data-token="accent" class="group relative h-9 rounded-md bg-calendar-accent ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Accent">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-token="emerald" class="group relative h-9 rounded-md bg-calendar-emerald ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Emerald">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-token="amber" class="group relative h-9 rounded-md bg-calendar-amber ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Amber">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-token="rose" class="group relative h-9 rounded-md bg-calendar-rose ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Rose">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-token="violet" class="group relative h-9 rounded-md bg-calendar-violet ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Violet">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-token="cyan" class="group relative h-9 rounded-md bg-calendar-cyan ring-offset-2 ring-offset-surface transition-all duration-instant ease-out hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:outline-none" title="Cyan">
+          <i data-lucide="check" class="absolute inset-0 m-auto h-4 w-4 text-white opacity-0 transition-opacity duration-instant ease-out" data-check></i>
+        </button>
+      </div>
+      {# Server-side contract: a single form field named "color" with a hex value.
+         JS writes the resolved hex from the chosen swatch's CSS variable. #}
+      <input type="hidden" id="color" name="color" value="{% if calendar %}{{ calendar.color }}{% endif %}">
+    </div>
+
+    <div class="pt-2 flex flex-col-reverse sm:flex-row gap-2">
+      <a
+        href="/admin/my-calendars"
+        class="inline-flex items-center justify-center gap-2 bg-surface border border-border-default text-text-primary hover:bg-elevated font-medium px-4 py-2 rounded-md transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+      >
+        Cancel
+      </a>
+      <button
+        type="submit"
+        class="inline-flex items-center justify-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none sm:flex-1"
+      >
+        <i data-lucide="check" class="h-4 w-4"></i>
+        {% if calendar %}Save changes{% else %}Create calendar{% endif %}
+      </button>
+    </div>
+  </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var group = document.getElementById('colorSwatches');
+    var hidden = document.getElementById('color');
+    if (!group || !hidden) return;
+
+    {# Map token name -> CSS custom property on :root. Hex resolved at runtime
+       so no raw hex literal lives in this template. #}
+    var TOKEN_TO_VAR = {
+      'accent': '--color-cal-accent',
+      'emerald': '--color-cal-emerald',
+      'amber': '--color-cal-amber',
+      'rose': '--color-cal-rose',
+      'violet': '--color-cal-violet',
+      'cyan': '--color-cal-cyan'
+    };
+
+    function resolveHex(token) {
+      var cssVar = TOKEN_TO_VAR[token];
+      if (!cssVar) return '';
+      var raw = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
+      return rgbToHex(raw) || raw;
+    }
+
+    function rgbToHex(value) {
+      // Accepts "#rrggbb", "#rgb", "rgb(r, g, b)", or "r, g, b". Returns "#rrggbb" or ''.
+      if (!value) return '';
+      var m;
+      if ((m = value.match(/^#([0-9a-f]{6})$/i))) return '#' + m[1].toLowerCase();
+      if ((m = value.match(/^#([0-9a-f]{3})$/i))) return '#' + m[1].split('').map(function (c) { return c + c; }).join('').toLowerCase();
+      var rgb = value.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (rgb) {
+        return '#' + rgb.slice(1).map(function (n) { return parseInt(n, 10).toString(16).padStart(2, '0'); }).join('').toLowerCase();
+      }
+      return '';
+    }
+
+    function select(button) {
+      var buttons = group.querySelectorAll('button[data-token]');
+      buttons.forEach(function (b) {
+        var isChecked = b === button;
+        b.setAttribute('aria-checked', String(isChecked));
+        b.classList.toggle('ring-2', isChecked);
+        b.classList.toggle('ring-accent-500', isChecked);
+        var check = b.querySelector('[data-check]');
+        if (check) check.classList.toggle('opacity-0', !isChecked);
+        if (check) check.classList.toggle('opacity-100', isChecked);
+      });
+      hidden.value = resolveHex(button.getAttribute('data-token'));
+    }
+
+    {# On edit (existing calendar), the server passes calendar.color in the
+       hidden input. We compare it against each resolved swatch to find the
+       matching button; if none match, we keep the server value and default
+       the visual selection to the accent swatch. #}
+    var serverValue = (hidden.value || '').toLowerCase();
+    var buttons = group.querySelectorAll('button[data-token]');
+    var matched = null;
+    buttons.forEach(function (b) {
+      var hex = resolveHex(b.getAttribute('data-token')).toLowerCase();
+      if (hex && hex === serverValue) matched = b;
+    });
+    if (matched) {
+      select(matched);
+    } else if (buttons.length) {
+      // Visually pick accent; preserve server value in hidden input if any.
+      var accentBtn = buttons[0];
+      accentBtn.setAttribute('aria-checked', 'true');
+      accentBtn.classList.add('ring-2', 'ring-accent-500');
+      var accentCheck = accentBtn.querySelector('[data-check]');
+      if (accentCheck) { accentCheck.classList.remove('opacity-0'); accentCheck.classList.add('opacity-100'); }
+      if (!serverValue) hidden.value = resolveHex('accent');
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () { select(b); });
+    });
+  })();
+</script>
 {% endblock %}
