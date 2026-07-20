@@ -1,38 +1,176 @@
-{% extends "user_base.html" %}
-{% block title %}Create API Key{% endblock %}
+{% extends "base.html" %}
+{% block title %}{% if generated_key %}API Key Created{% else %}Create API Key{% endif %}{% endblock %}
 
 {% block content %}
+{# Back link. #}
 <div class="mb-6">
-    <a href="/admin/my-api-keys" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to API Keys</a>
+  <a
+    href="/admin/my-api-keys"
+    class="inline-flex items-center gap-1.5 text-body-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none rounded-md"
+  >
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Back to API Keys
+  </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-lg">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">Generate API Key</h1>
-    
-    {% if generated_key %}
-    <div class="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded">
-        <p class="text-green-800 dark:text-green-200 font-medium mb-2">API Key Generated!</p>
-        <p class="text-sm text-green-700 dark:text-green-300 mb-3">Copy this key now. You won't be able to see it again.</p>
-        <code class="block p-3 bg-white dark:bg-gray-900 border dark:border-gray-600 rounded text-sm break-all text-gray-800 dark:text-gray-200">{{ generated_key }}</code>
+<div class="bg-surface rounded-lg border border-border-default shadow-popover p-6 max-w-lg">
+  {% if generated_key %}
+  {# ── Post-creation state — reveal-once panel ──────────────────────────
+     The raw key is never retrievable again. Show a prominent success panel
+     with copy-to-clipboard and a warning. #}
+  <div class="flex items-center gap-3 mb-2">
+    <span class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-success/15 text-success">
+      <i data-lucide="check" class="h-5 w-5"></i>
+    </span>
+    <h2 class="text-h2 text-text-primary">API key generated</h2>
+  </div>
+  <p class="text-body-sm text-text-secondary mb-5">Copy this key now. For security reasons, it will not be shown again.</p>
+
+  <div class="rounded-lg border border-warning/30 bg-warning/10 p-4 mb-5 flex items-start gap-3">
+    <i data-lucide="triangle-alert" class="h-4 w-4 mt-0.5 text-warning shrink-0"></i>
+    <div class="text-body-sm text-warning">
+      <p class="font-medium">Store this key securely.</p>
+      <p class="text-warning/90">Treat it like a password — anyone with this key can authenticate as you.</p>
     </div>
-    {% endif %}
-    
-    <form action="/admin/my-api-keys/create" method="post" class="space-y-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input type="text" name="name" required placeholder="e.g., Mobile App" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expires At (optional)</label>
-            <input type="datetime-local" name="expires_at" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        
-        <div class="pt-4">
-            <button type="submit" class="w-full bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-                {% if generated_key %}Generate Another Key{% else %}Generate Key{% endif %}
-            </button>
-        </div>
+  </div>
+
+  <label for="generated-key" class="block text-body-sm font-medium text-text-primary mb-1.5">Your new API key</label>
+  <div class="relative">
+    <input
+      id="generated-key"
+      type="text"
+      readonly
+      value="{{ generated_key }}"
+      class="w-full h-10 pl-3 pr-12 rounded-md bg-canvas border border-border-input font-mono text-mono text-text-primary text-body-sm break-all focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+      onclick="this.select()"
+    >
+    <button
+      type="button"
+      id="copyKeyBtn"
+      data-target="generated-key"
+      class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded text-text-tertiary hover:text-text-primary hover:bg-hover transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+      aria-label="Copy API key to clipboard"
+    >
+      <i data-lucide="copy" class="h-4 w-4 block" data-copy-icon></i>
+      <i data-lucide="check" class="h-4 w-4 hidden text-success" data-copied-icon></i>
+    </button>
+  </div>
+  <p id="copyStatus" class="text-body-sm text-success mt-1.5 sr-only" role="status" aria-live="polite">Copied to clipboard.</p>
+
+  <div class="mt-6 flex flex-col-reverse sm:flex-row gap-2">
+    <a
+      href="/admin/my-api-keys"
+      class="inline-flex items-center justify-center gap-2 bg-surface border border-border-default text-text-primary hover:bg-elevated font-medium px-4 py-2 rounded-md transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+    >
+      Done
+    </a>
+    {# Server contract: POST /admin/my-api-keys/create with name field. The
+       generated key is shown until the user navigates away. #}
+    <form action="/admin/my-api-keys/create" method="post" class="flex-1">
+      <input type="hidden" name="name" value="{{ api_key.name if api_key else 'New Key' }}">
+      <button
+        type="submit"
+        class="w-full inline-flex items-center justify-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+      >
+        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+        Generate another
+      </button>
     </form>
+  </div>
+
+  {% else %}
+  {# ── Pre-creation state — form with name field ──────────────────────── #}
+  <div class="mb-6">
+    <h2 class="text-h2 text-text-primary">Generate API key</h2>
+    <p class="mt-1 text-body-sm text-text-secondary">Create a token to authenticate CalDAV and ICS feed requests.</p>
+  </div>
+
+  {# Server contract: POST /admin/my-api-keys/create. Backend reads Form(name) and Form(expires_at). #}
+  <form action="/admin/my-api-keys/create" method="post" class="space-y-5">
+    <div class="space-y-1.5">
+      <label for="name" class="block text-body-sm font-medium text-text-primary">Name</label>
+      <input
+        type="text"
+        id="name"
+        name="name"
+        required
+        placeholder="e.g., Mobile App"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary placeholder:text-text-tertiary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+      >
+      <p class="text-body-sm text-text-tertiary">A label so you remember where this key is used.</p>
+    </div>
+
+    <div class="space-y-1.5">
+      <label for="expires_at" class="block text-body-sm font-medium text-text-primary">Expires at <span class="text-text-tertiary font-normal">(optional)</span></label>
+      <input
+        type="datetime-local"
+        id="expires_at"
+        name="expires_at"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+      >
+      <p class="text-body-sm text-text-tertiary">Leave blank for a key that never expires.</p>
+    </div>
+
+    <div class="pt-2 flex flex-col-reverse sm:flex-row gap-2">
+      <a
+        href="/admin/my-api-keys"
+        class="inline-flex items-center justify-center gap-2 bg-surface border border-border-default text-text-primary hover:bg-elevated font-medium px-4 py-2 rounded-md transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none"
+      >
+        Cancel
+      </a>
+      <button
+        type="submit"
+        class="inline-flex items-center justify-center gap-2 bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-fast ease-out focus-visible:shadow-focus focus-visible:outline-none sm:flex-1"
+      >
+        <i data-lucide="key-round" class="h-4 w-4"></i>
+        Generate key
+      </button>
+    </div>
+  </form>
+  {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if generated_key %}
+<script>
+  (function () {
+    var btn = document.getElementById('copyKeyBtn');
+    var target = document.getElementById('generated-key');
+    var status = document.getElementById('copyStatus');
+    if (!btn || !target) return;
+    var copyIcon = btn.querySelector('[data-copy-icon]');
+    var copiedIcon = btn.querySelector('[data-copied-icon]');
+
+    function reset() {
+      if (copyIcon) { copyIcon.classList.remove('hidden'); copyIcon.classList.add('block'); }
+      if (copiedIcon) { copiedIcon.classList.remove('block'); copiedIcon.classList.add('hidden'); }
+      if (status) { status.classList.add('sr-only'); }
+    }
+
+    btn.addEventListener('click', function () {
+      var promise;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        promise = navigator.clipboard.writeText(target.value);
+      } else {
+        // Legacy fallback — select + execCommand.
+        target.removeAttribute('readonly');
+        target.select();
+        document.execCommand('copy');
+        target.setAttribute('readonly', '');
+        promise = Promise.resolve();
+      }
+      promise.then(function () {
+        if (copyIcon) { copyIcon.classList.add('hidden'); copyIcon.classList.remove('block'); }
+        if (copiedIcon) { copiedIcon.classList.remove('hidden'); copiedIcon.classList.add('block'); }
+        if (status) { status.classList.remove('sr-only'); }
+        btn.setAttribute('aria-label', 'API key copied');
+        setTimeout(reset, 2500);
+      }).catch(function () {
+        // Silent fail; the field is still selectable and clickable to select.
+      });
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

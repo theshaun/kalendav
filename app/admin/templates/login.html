@@ -1,52 +1,119 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - KalenDAV Admin</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">KalenDAV Admin</h1>
-        
-        {% if error %}
-        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {{ error }}
-        </div>
-        {% endif %}
-        
-        <form method="post" action="/admin/login">
-            <div class="mb-4">
-                <label for="username" class="block text-gray-700 text-sm font-bold mb-2">Username</label>
-                <input 
-                    type="text" 
-                    id="username" 
-                    name="username" 
-                    required
-                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                    autofocus
-                >
-            </div>
-            
-            <div class="mb-6">
-                <label for="password" class="block text-gray-700 text-sm font-bold mb-2">Password</label>
-                <input 
-                    type="password" 
-                    id="password" 
-                    name="password" 
-                    required
-                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                >
-            </div>
-            
-            <button 
-                type="submit"
-                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full focus:outline-none focus:shadow-outline"
-            >
-                Sign In
-            </button>
-        </form>
+{% extends "_auth_base.html" %}
+
+{% block title %}Sign in{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  {# Brand mark — DESIGN.md §4 "Brand mark sits above the card". #}
+  <div class="flex flex-col items-center gap-3 text-center">
+    <span class="inline-flex items-center justify-center h-12 w-12 rounded-xl bg-accent-500/10 text-accent-600 dark:text-accent-400 p-3">
+      <i data-lucide="calendar-check" class="h-6 w-6"></i>
+    </span>
+    <h1 class="text-h1 text-text-primary">KalenDAV</h1>
+    <p class="text-body-sm text-text-secondary">Welcome back — sign in to your account</p>
+  </div>
+
+  {# Auth card — DESIGN.md §4: radius-2xl, space-8 padding, bg-surface, border. #}
+  <div class="bg-surface border border-border-default rounded-2xl p-8 shadow-modal">
+    {% if error %}
+    <div
+      role="alert"
+      class="mb-6 flex items-start gap-3 p-3 rounded-md bg-danger/10 border border-danger/20 text-body-sm text-danger"
+    >
+      <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
+      <span>{{ error }}</span>
     </div>
-</body>
-</html>
+    {% endif %}
+
+    <form method="post" action="/admin/login" class="space-y-5">
+      {# Username — Lucide user icon prefix. #}
+      <div class="space-y-2">
+        <label for="username" class="block text-body-sm font-medium text-text-primary">Username</label>
+        <div class="relative">
+          <i data-lucide="user" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary"></i>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            required
+            autocomplete="username"
+            autofocus
+            class="w-full h-9 pl-9 pr-3 rounded-md bg-canvas border border-border-input text-text-primary placeholder:text-text-tertiary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+            placeholder="your.username"
+          >
+        </div>
+      </div>
+
+      {# Password — Lucide lock icon prefix + show/hide toggle. #}
+      <div class="space-y-2">
+        <label for="password" class="block text-body-sm font-medium text-text-primary">Password</label>
+        <div class="relative">
+          <i data-lucide="lock" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary"></i>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            autocomplete="current-password"
+            class="w-full h-9 pl-9 pr-10 rounded-md bg-canvas border border-border-input text-text-primary placeholder:text-text-tertiary text-body-sm transition-colors duration-instant ease-out focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none"
+            placeholder="••••••••"
+          >
+          <button
+            type="button"
+            id="passwordToggle"
+            class="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded text-text-tertiary hover:text-text-primary hover:bg-hover transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+            aria-label="Show password"
+            aria-pressed="false"
+            aria-controls="password"
+          >
+            <i data-lucide="eye" class="h-4 w-4 block" data-show-icon></i>
+            <i data-lucide="eye-off" class="h-4 w-4 hidden" data-hide-icon></i>
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        class="
+          w-full h-9 rounded-md
+          bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600
+          text-white text-body-sm font-medium
+          transition-colors duration-instant ease-out
+          active:scale-[0.98]
+          focus-visible:shadow-focus focus-visible:outline-none
+        "
+      >
+        Sign in
+      </button>
+    </form>
+  </div>
+
+  {# Footer — quiet version line. app_version is provided by template filters if available. #}
+  {% if app_version is defined %}
+  <p class="text-center text-text-tertiary text-xs">KalenDAV v{{ app_version }}</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var toggle = document.getElementById('passwordToggle');
+    var input = document.getElementById('password');
+    if (!toggle || !input) return;
+    var showIcon = toggle.querySelector('[data-show-icon]');
+    var hideIcon = toggle.querySelector('[data-hide-icon]');
+
+    toggle.addEventListener('click', function () {
+      var isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      toggle.setAttribute('aria-pressed', String(isHidden));
+      toggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+      if (showIcon) showIcon.classList.toggle('hidden', isHidden);
+      if (showIcon) showIcon.classList.toggle('block', !isHidden);
+      if (hideIcon) hideIcon.classList.toggle('hidden', !isHidden);
+      if (hideIcon) hideIcon.classList.toggle('block', isHidden);
+    });
+  })();
+</script>
+{% endblock %}
