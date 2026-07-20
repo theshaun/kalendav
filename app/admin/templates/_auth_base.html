@@ -1,0 +1,47 @@
+{# Auth shell for the login page. No sidebar, no topbar — just the centered
+   card on the auth gradient (DESIGN.md §4 "Login layout"). #}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Sign in to KalenDAV — CalDAV server">
+  <title>{% block title %}Sign in{% endblock %} · KalenDAV</title>
+
+  {# FOUC buster — identical to _base.html (DESIGN.md §8). #}
+  <script>
+    (function () {
+      var stored = localStorage.getItem('darkMode');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (stored === 'true' || (!stored && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  <link rel="stylesheet" href="{{ 'style.css' | vite_asset }}">
+
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="min-h-screen bg-auth-gradient bg-no-repeat bg-fixed text-text-primary font-sans antialiased">
+  {# Dark mode toggle floats in the top-right corner on every auth page. main.js wires #darkModeToggle. #}
+  <button
+    type="button"
+    id="darkModeToggle"
+    class="absolute top-4 right-4 inline-flex items-center justify-center h-10 w-10 rounded-md text-text-secondary hover:bg-hover hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+    aria-label="Toggle dark mode"
+  >
+    <i data-lucide="sun" class="hidden dark:block h-5 w-5"></i>
+    <i data-lucide="moon" class="block dark:hidden h-5 w-5"></i>
+  </button>
+
+  <main class="flex min-h-screen items-center justify-center p-6">
+    <div class="w-full max-w-md">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <script type="module" src="{{ 'app/static/src/main.js' | vite_asset }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
