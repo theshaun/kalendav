@@ -1,56 +1,81 @@
 {% extends "base.html" %}
 
 {% block title %}API Keys{% endblock %}
+{% block page_title %}API Keys{% endblock %}
 
 {% block content %}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">API Keys</h1>
-    <a href="/admin/api-keys/create" class="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-        Generate Key
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <div>
+        <h1 class="text-h1 text-text-primary">API Keys</h1>
+        <p class="text-text-secondary text-body-sm mt-1">Long-lived tokens for ICS feeds and Basic Auth CalDAV</p>
+    </div>
+    <a href="/admin/api-keys/create"
+       class="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+        <i data-lucide="key-round" class="h-4 w-4"></i>
+        <span>New API Key</span>
     </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Expires</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+{% if api_keys %}
+<div class="bg-surface rounded-lg shadow-popover overflow-hidden">
+    <table class="min-w-full">
+        <thead>
+            <tr class="border-b border-border-subtle">
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Name</th>
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">User</th>
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Key</th>
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Status</th>
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Expires</th>
+                <th class="text-left text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Created</th>
+                <th class="text-right text-label font-medium uppercase tracking-wide text-text-tertiary px-6 py-3">Actions</th>
             </tr>
         </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+        <tbody>
             {% for key in api_keys %}
-            <tr>
+            <tr class="border-b border-border-subtle last:border-b-0 hover:bg-hover transition-colors duration-instant">
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ key.name }}</div>
+                    <span class="text-body-sm font-medium text-text-primary">{{ key.name }}</span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ key.user.username }}</div>
+                    <span class="font-mono text-body-sm text-text-secondary">{{ key.user.username }}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    {# Key hash masked — raw key is never persisted. #}
+                    <span class="font-mono text-body-sm text-text-tertiary" title="Key fingerprint (hash)">
+                        {{ key.key_hash[:8] }}…{{ key.key_hash[-4:] }}
+                    </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     {% if key.is_active %}
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                    <span class="inline-flex items-center gap-1.5 text-body-sm text-success">
+                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-success"></span>
                         Active
                     </span>
                     {% else %}
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200">
+                    <span class="inline-flex items-center gap-1.5 text-body-sm text-text-tertiary">
+                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-text-tertiary"></span>
                         Inactive
                     </span>
                     {% endif %}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ key.expires_at.strftime('%Y-%m-%d') if key.expires_at else 'Never' }}
+                <td class="px-6 py-4 whitespace-nowrap text-body-sm text-text-secondary">
+                    {% if key.expires_at %}
+                    {{ key.expires_at.strftime('%Y-%m-%d') }}
+                    {% else %}
+                    <span class="text-text-tertiary">Never</span>
+                    {% endif %}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                <td class="px-6 py-4 whitespace-nowrap text-body-sm text-text-tertiary">
                     {{ key.created_at.strftime('%Y-%m-%d') }}
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <form action="/admin/api-keys/{{ key.id }}/delete" method="post" class="inline">
-                        <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300" onclick="return confirm('Delete this API key?')">Delete</button>
+                <td class="px-6 py-4 whitespace-nowrap text-right">
+                    <form action="/admin/api-keys/{{ key.id }}/delete" method="post" class="inline"
+                          onsubmit="return confirm('Revoke API key &ldquo;{{ key.name }}&rdquo;? Clients using it will lose access immediately.');">
+                        <button type="submit"
+                                class="inline-flex items-center gap-1.5 text-body-sm text-danger hover:bg-danger-bg px-2.5 py-1.5 rounded-md transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                            <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                            <span>Revoke</span>
+                        </button>
                     </form>
                 </td>
             </tr>
@@ -58,4 +83,18 @@
         </tbody>
     </table>
 </div>
+{% else %}
+<div class="bg-surface rounded-lg shadow-popover p-12 flex flex-col items-center text-center">
+    <div class="flex items-center justify-center h-12 w-12 rounded-full bg-hover text-text-tertiary mb-4">
+        <i data-lucide="key-round" class="h-6 w-6"></i>
+    </div>
+    <h2 class="text-h3 text-text-primary">No API keys yet</h2>
+    <p class="text-text-secondary text-body-sm mt-2 max-w-sm">Generate a key to grant a client read-only ICS access or Basic Auth CalDAV access.</p>
+    <a href="/admin/api-keys/create"
+       class="mt-5 inline-flex items-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+        <i data-lucide="key-round" class="h-4 w-4"></i>
+        <span>New API Key</span>
+    </a>
+</div>
+{% endif %}
 {% endblock %}

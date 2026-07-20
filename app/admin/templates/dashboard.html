@@ -1,73 +1,166 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
 <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">Dashboard</h1>
-    <p class="text-gray-600 dark:text-gray-400 mt-2">Welcome to the CalDAV Server administration panel</p>
+    <h1 class="text-h1 text-text-primary">Dashboard</h1>
+    <p class="text-text-secondary text-body-sm mt-1">Welcome to the CalDAV Server administration panel</p>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div class="flex items-center">
-            <div class="p-3 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-                </svg>
+{# Stat cards row #}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+    {# Users #}
+    <a href="/admin/users"
+       class="group block bg-surface rounded-lg shadow-popover p-6 transition-transform duration-base ease-out hover:-translate-y-0.5 focus-visible:outline-none focus-visible:shadow-focus">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center justify-center h-11 w-11 rounded-md bg-accent-50 text-accent-600">
+                <i data-lucide="users" class="h-5 w-5"></i>
             </div>
-            <div class="ml-4">
-                <p class="text-gray-500 dark:text-gray-400 text-sm">Total Users</p>
-                <p class="text-2xl font-semibold text-gray-800 dark:text-gray-100">{{ users_count }}</p>
-            </div>
-        </div>
-        <a href="/admin/users" class="mt-4 inline-block text-blue-600 dark:text-blue-400 hover:underline">View all &rarr;</a>
-    </div>
-    
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div class="flex items-center">
-            <div class="p-3 rounded-full bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4v3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002-2z"></path>
-                </svg>
-            </div>
-            <div class="ml-4">
-                <p class="text-gray-500 dark:text-gray-400 text-sm">Total Calendars</p>
-                <p class="text-2xl font-semibold text-gray-800 dark:text-gray-100">{{ calendars_count }}</p>
+            <div class="min-w-0">
+                <p class="text-h1 text-text-primary leading-none">{{ users_count }}</p>
+                <p class="text-text-secondary text-body-sm mt-1">Users</p>
             </div>
         </div>
-        <a href="/admin/calendars" class="mt-4 inline-block text-blue-600 dark:text-blue-400 hover:underline">View all &rarr;</a>
-    </div>
-    
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div class="flex items-center">
-            <div class="p-3 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                </svg>
+        <p class="mt-4 text-text-tertiary text-label uppercase tracking-wide group-hover:text-text-secondary transition-colors duration-instant">
+            View all
+        </p>
+    </a>
+
+    {# Calendars #}
+    <a href="/admin/calendars"
+       class="group block bg-surface rounded-lg shadow-popover p-6 transition-transform duration-base ease-out hover:-translate-y-0.5 focus-visible:outline-none focus-visible:shadow-focus">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center justify-center h-11 w-11 rounded-md bg-accent-50 text-accent-600">
+                <i data-lucide="calendar" class="h-5 w-5"></i>
             </div>
-            <div class="ml-4">
-                <p class="text-gray-500 dark:text-gray-400 text-sm">Total Events</p>
-                <p class="text-2xl font-semibold text-gray-800 dark:text-gray-100">{{ events_count }}</p>
+            <div class="min-w-0">
+                <p class="text-h1 text-text-primary leading-none">{{ calendars_count }}</p>
+                <p class="text-text-secondary text-body-sm mt-1">Calendars</p>
             </div>
         </div>
-        <a href="/admin/calendar" class="mt-4 inline-block text-blue-600 dark:text-blue-400 hover:underline">View Calendar &rarr;</a>
-    </div>
+        <p class="mt-4 text-text-tertiary text-label uppercase tracking-wide group-hover:text-text-secondary transition-colors duration-instant">
+            View all
+        </p>
+    </a>
+
+    {# Events #}
+    <a href="/admin/calendar"
+       class="group block bg-surface rounded-lg shadow-popover p-6 transition-transform duration-base ease-out hover:-translate-y-0.5 focus-visible:outline-none focus-visible:shadow-focus">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center justify-center h-11 w-11 rounded-md bg-accent-50 text-accent-600">
+                <i data-lucide="calendar-clock" class="h-5 w-5"></i>
+            </div>
+            <div class="min-w-0">
+                <p class="text-h1 text-text-primary leading-none">{{ events_count }}</p>
+                <p class="text-text-secondary text-body-sm mt-1">Events</p>
+            </div>
+        </div>
+        <p class="mt-4 text-text-tertiary text-label uppercase tracking-wide group-hover:text-text-secondary transition-colors duration-instant">
+            Open calendar
+        </p>
+    </a>
 </div>
 
-<div class="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Quick Links</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+{# Quick links panel #}
+<div class="bg-surface rounded-lg shadow-popover p-6">
+    <div class="flex items-center justify-between mb-5">
+        <h2 class="text-h3 text-text-primary">Quick Links</h2>
+        <i data-lucide="link" class="h-4 w-4 text-text-tertiary"></i>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {# CalDAV #}
         <div>
-            <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-2">CalDAV Connection</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Connect your calendar client to:</p>
-            <code class="block mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-800 dark:text-gray-200 break-all">{{ base_uri }}/dav/{{ user.username }}/calendars</code>
+            <div class="flex items-center gap-2 mb-2">
+                <i data-lucide="server" class="h-4 w-4 text-text-secondary"></i>
+                <h3 class="text-body-sm font-medium text-text-primary">CalDAV Connection</h3>
+            </div>
+            <p class="text-text-tertiary text-body-sm mb-2">Connect your calendar client to this URL.</p>
+            <div class="flex items-center gap-2 bg-canvas border border-border-default rounded-md p-3">
+                <code class="flex-1 font-mono text-body-sm text-text-primary break-all">{{ base_uri }}/dav/{{ user.username }}/calendars</code>
+                <button type="button"
+                        data-copy="{{ base_uri }}/dav/{{ user.username }}/calendars"
+                        class="copy-btn shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-text-tertiary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                        aria-label="Copy CalDAV URL">
+                    <i data-lucide="copy" class="h-4 w-4"></i>
+                </button>
+            </div>
         </div>
+
+        {# ICS #}
         <div>
-            <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-2">ICS Feeds</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400">Access calendars via ICS:</p>
-            <code class="block mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-800 dark:text-gray-200 break-all">{{ base_uri }}/ics/{calendar_id}?api_key=xxx</code>
+            <div class="flex items-center gap-2 mb-2">
+                <i data-lucide="rss" class="h-4 w-4 text-text-secondary"></i>
+                <h3 class="text-body-sm font-medium text-text-primary">ICS Feeds</h3>
+            </div>
+            <p class="text-text-tertiary text-body-sm mb-2">Read-only ICS feed per calendar.</p>
+            <div class="flex items-center gap-2 bg-canvas border border-border-default rounded-md p-3">
+                <code class="flex-1 font-mono text-body-sm text-text-primary break-all">{{ base_uri }}/ics/{calendar_id}?api_key=xxx</code>
+                <button type="button"
+                        data-copy="{{ base_uri }}/ics/"
+                        class="copy-btn shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-text-tertiary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                        aria-label="Copy ICS URL prefix">
+                    <i data-lucide="copy" class="h-4 w-4"></i>
+                </button>
+            </div>
         </div>
+
+        {# Create user shortcut #}
+        <a href="/admin/users/create"
+           class="group flex items-center gap-3 rounded-md p-3 border border-border-subtle hover:border-border-default hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+            <i data-lucide="user-plus" class="h-4 w-4 text-accent-600"></i>
+            <div class="min-w-0 flex-1">
+                <p class="text-body-sm font-medium text-text-primary">New user</p>
+                <p class="text-text-tertiary text-label">Provision an account</p>
+            </div>
+            <i data-lucide="arrow-right" class="h-4 w-4 text-text-tertiary group-hover:translate-x-0.5 group-hover:text-text-secondary transition-all duration-instant"></i>
+        </a>
+
+        {# Create calendar shortcut #}
+        <a href="/admin/calendars/create"
+           class="group flex items-center gap-3 rounded-md p-3 border border-border-subtle hover:border-border-default hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+            <i data-lucide="plus" class="h-4 w-4 text-accent-600"></i>
+            <div class="min-w-0 flex-1">
+                <p class="text-body-sm font-medium text-text-primary">New calendar</p>
+                <p class="text-text-tertiary text-label">For any user</p>
+            </div>
+            <i data-lucide="arrow-right" class="h-4 w-4 text-text-tertiary group-hover:translate-x-0.5 group-hover:text-text-secondary transition-all duration-instant"></i>
+        </a>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        document.querySelectorAll('.copy-btn').forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                var text = btn.getAttribute('data-copy') || '';
+                try {
+                    await navigator.clipboard.writeText(text);
+                    var icon = btn.querySelector('[data-lucide], svg');
+                    if (icon) {
+                        var original = icon.outerHTML;
+                        icon.outerHTML = '<i data-lucide="check" class="h-4 w-4 text-success"></i>';
+                        if (window.lucide) window.lucide.createIcons();
+                    }
+                    btn.setAttribute('aria-live', 'polite');
+                    setTimeout(function () {
+                        btn.querySelector('[data-lucide="check"], svg[data-lucide="check"]')?.replaceWith(
+                            (function () {
+                                var d = document.createElement('i');
+                                d.setAttribute('data-lucide', 'copy');
+                                d.className = 'h-4 w-4';
+                                return d;
+                            })()
+                        );
+                        if (window.lucide) window.lucide.createIcons();
+                    }, 1500);
+                } catch (e) { /* clipboard blocked; silent */ }
+            });
+        });
+    })();
+</script>
 {% endblock %}
