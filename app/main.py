@@ -1,3 +1,4 @@
+from app import __version__
 from app.config import settings
 from app.database import init_db
 from app.init_data import create_admin_user
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -35,7 +37,7 @@ app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": __version__}
 
 
 @app.api_route("/.well-known/caldav", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])

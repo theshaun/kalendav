@@ -1,0 +1,71 @@
+# ---------------------------------------------------------------------------
+# pyproject.toml — project metadata, build backend, and tool config
+# ---------------------------------------------------------------------------
+# Runtime dependencies are intentionally NOT declared under [project.dependencies].
+# The Dockerfile installs from requirements.txt, which stays the source of truth
+# for deployment. This file exists so that:
+#   - the package version is discoverable via `importlib.metadata.version`
+#   - `pip install -e .` works for development editable installs
+#   - tooling (hatch, build, future linters) has a standard entry point
+# ---------------------------------------------------------------------------
+
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kalendav"
+dynamic = ["version"]
+description = "Lightweight async CalDAV server with web UI, ICS feeds, and calendar sharing."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Shaun Walker" }]
+keywords = ["caldav", "calendar", "fastapi", "async", "ical", "ics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Calendar",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/theshaun/KalenDAV"
+Repository = "https://github.com/theshaun/KalenDAV"
+Issues = "https://github.com/theshaun/KalenDAV/issues"
+Changelog = "https://github.com/theshaun/KalenDAV/blob/main/CHANGELOG.md"
+
+# ---------------------------------------------------------------------------
+# Hatchling: read version dynamically from app/__init__.py
+# ---------------------------------------------------------------------------
+[tool.hatch.version]
+path = "app/__init__.py"
+pattern = '__version__\s*=\s*"(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/app",
+    "/alembic",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/requirements.txt",
+    "/requirements-dev.txt",
+    "/alembic.ini",
+    "/docker-compose.yml",
+    "/Dockerfile",
+    "/.env.example",
+]
