@@ -44,3 +44,7 @@ node_modules/
 app/static/dist/
 *.tsbuildinfo
 .vite/
+test-results/
+tests/visual/__screenshots__/
+tests/visual/__results__/
+tests/visual/__lighthouse__/
