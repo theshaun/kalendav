@@ -355,20 +355,43 @@ def generate_calendar_ics(events: list, calendar_name: str = "Calendar", calenda
     cal.add("method", "PUBLISH")
     cal.add("x-wr-calname", calendar_name)
     cal.add("x-wr-timezone", settings.default_timezone)
-    _add_vtimezone_if_needed(cal)
+    _add_vtimezone(cal, settings.default_timezone)
+
+    # Emit VTIMEZONE for every unique tz appearing in the event set, not just
+    # the server default. Clients with stale tzdata (older Android, some iOS
+    # configs) need the offset/rule definition inline or they misrender.
+    seen_tzs = {settings.default_timezone}
+    for event in events:
+        event_tz = getattr(event, "timezone", None)
+        if event_tz and event_tz not in seen_tzs:
+            _add_vtimezone(cal, event_tz)
+            seen_tzs.add(event_tz)
+
     if calendar_color:
         cal.add("x-apple-calendar-color", calendar_color)
 
     for event in events:
         event_tz = getattr(event, "timezone", None)
+        is_all_day = bool(getattr(event, "is_all_day", False))
         ical_event = ICalEvent()
         ical_event.add("uid", event.uid)
-        localized_start = convert_utc_to_tz(event.dtstart, event_tz)
-        ical_event.add("dtstart", localized_start)
-        if event.dtend:
-            ical_event.add("dtend", convert_utc_to_tz(event.dtend, event_tz))
+
+        if is_all_day:
+            # RFC 5545 §3.3.4: all-day events use VALUE=DATE — no time, no tz.
+            start_date = event.dtstart.date() if isinstance(event.dtstart, datetime) else event.dtstart
+            ical_event.add("dtstart", start_date, {"value": "DATE"})
+            if event.dtend:
+                end_date = event.dtend.date() if isinstance(event.dtend, datetime) else event.dtend
+                ical_event.add("dtend", end_date, {"value": "DATE"})
+            else:
+                ical_event.add("dtend", start_date + timedelta(days=1), {"value": "DATE"})
         else:
-            ical_event.add("dtend", localized_start + timedelta(hours=1))
+            localized_start = convert_utc_to_tz(event.dtstart, event_tz)
+            ical_event.add("dtstart", localized_start)
+            if event.dtend:
+                ical_event.add("dtend", convert_utc_to_tz(event.dtend, event_tz))
+            else:
+                ical_event.add("dtend", localized_start + timedelta(hours=1))
         ical_event.add("dtstamp", datetime.utcnow())
         if event.summary:
             ical_event.add("summary", event.summary)

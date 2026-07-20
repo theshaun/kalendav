@@ -25,8 +25,11 @@ import json
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from app.admin.template_filters import register_template_filters
+
 router = APIRouter()
 templates = Jinja2Templates(directory="app/admin/templates")
+register_template_filters(templates.env)
 
 
 def _resolve_client_tz(tz_name: Optional[str]) -> ZoneInfo:
@@ -69,6 +72,17 @@ def _event_local_for_form(event, client_tz: ZoneInfo):
     if event is None or event.is_all_day:
         return event
     return _LocalEventView(event, client_tz)
+
+
+def _event_zone(event) -> ZoneInfo:
+    # Render in the event's own tz so web matches phone ICS output, not the viewer's tz.
+    tz_name = getattr(event, "timezone", None)
+    if not tz_name:
+        return settings.tz
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return settings.tz
 
 
 def check_admin(user: User):
@@ -203,7 +217,7 @@ async def create_user(
     default_calendar = Calendar(
         name=f"{username}'s Calendar",
         description=f"Default calendar for {username}",
-        color="#3B82F6",
+        color=Calendar.DEFAULT_COLOR,
         user_id=new_user.id,
     )
     db.add(default_calendar)
@@ -321,7 +335,7 @@ async def create_calendar_form(
 async def create_calendar(
     name: str = Form(...),
     description: str = Form(None),
-    color: str = Form("#3B82F6"),
+    color: str = Form(Calendar.DEFAULT_COLOR),
     user_id: int = Form(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
@@ -371,7 +385,7 @@ async def edit_calendar(
     calendar_id: int,
     name: str = Form(...),
     description: str = Form(None),
-    color: str = Form("#3B82F6"),
+    color: str = Form(Calendar.DEFAULT_COLOR),
     user_id: int = Form(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
@@ -799,7 +813,7 @@ async def user_edit_calendar(
     calendar_id: int,
     name: str = Form(...),
     description: str = Form(None),
-    color: str = Form("#3B82F6"),
+    color: str = Form(Calendar.DEFAULT_COLOR),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -842,7 +856,7 @@ async def user_delete_calendar(
 async def user_create_calendar(
     name: str = Form(...),
     description: str = Form(None),
-    color: str = Form("#3B82F6"),
+    color: str = Form(Calendar.DEFAULT_COLOR),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -1016,24 +1030,32 @@ async def get_calendar_events(
     
     events_data = []
     for event in events:
-        dtstart_utc = event.dtstart.replace(tzinfo=timezone.utc)
-        dtstart_local = dtstart_utc.astimezone(client_tz)
-        
-        if event.dtend:
-            dtend_utc = event.dtend.replace(tzinfo=timezone.utc)
-            dtend_local = dtend_utc.astimezone(client_tz)
+        if event.is_all_day:
+            dtstart_local = event.dtstart.replace(tzinfo=None)
+            dtend_local = event.dtend.replace(tzinfo=None) if event.dtend else dtstart_local + timedelta(days=1)
+            event_start = dtstart_local.date().isoformat()
+            event_end = dtend_local.date().isoformat()
         else:
-            dtend_local = dtstart_local + timedelta(hours=1)
+            event_tz = _event_zone(event)
+            dtstart_utc = event.dtstart.replace(tzinfo=timezone.utc)
+            dtstart_local = dtstart_utc.astimezone(event_tz)
+            if event.dtend:
+                dtend_utc = event.dtend.replace(tzinfo=timezone.utc)
+                dtend_local = dtend_utc.astimezone(event_tz)
+            else:
+                dtend_local = dtstart_local + timedelta(hours=1)
+            event_start = dtstart_local.isoformat()
+            event_end = dtend_local.isoformat()
         
         event_data = {
             "id": event.id,
             "title": event.summary or "(No title)",
-            "start": dtstart_local.isoformat(),
-            "end": dtend_local.isoformat(),
+            "start": event_start,
+            "end": event_end,
             "allDay": event.is_all_day,
             "calendarId": event.calendar_id,
             "calendarName": event.calendar.name if event.calendar else "",
-            "calendarColor": event.calendar.color if event.calendar else "#3B82F6",
+            "calendarColor": event.calendar.color if event.calendar else Calendar.DEFAULT_COLOR,
             "color": event.color,
             "location": event.location,
             "description": event.description,
