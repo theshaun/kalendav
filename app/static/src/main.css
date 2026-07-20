@@ -1,0 +1,287 @@
+/* KalenDAV global stylesheet. Wave 2.
+ *
+ * Order matters:
+ *   1. @fontsource-variable imports (self-hosted woff2 — no Google Fonts CDN).
+ *   2. Tailwind directives.
+ *   3. :root design tokens (light defaults) and .dark overrides — mirrors
+ *      DESIGN.md sections 2, 3, 4 exactly. Every token there appears here.
+ *   4. Base layer tweaks (color-scheme, body, focus, reduced-motion).
+ *   5. FullCalendar theme overrides used to live here; Wave 5 moved them
+ *      into calendar.css, which is imported by calendar.js so the rules
+ *      ship only on the calendar page (and merge into style.css via
+ *      cssCodeSplit:false).
+ */
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+ * Design tokens — light defaults on :root, dark overrides on .dark.
+ * Tokens that do not change between modes (accent ramp, calendar palette,
+ * spacing, radii, durations, easings, z-index, layout geometry) live on
+ * :root only and cascade into .dark.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  /* Section 2 — Background surfaces */
+  --color-bg-canvas: #fafafa;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #f4f4f5;
+  --color-bg-hover: rgba(0, 0, 0, 0.03);
+  --color-bg-sidebar: rgba(255, 255, 255, 0.72);
+  --color-bg-topbar: rgba(250, 250, 250, 0.72);
+  --color-bg-overlay: rgba(15, 15, 20, 0.50);
+  --color-bg-auth: radial-gradient(ellipse at top, #ffffff 0%, #f4f4f5 60%);
+
+  /* Section 2 — Text */
+  --color-text-primary: #09090b;
+  --color-text-secondary: #52525b;
+  /* WCAG AA: #71717a (4.66:1) → #64646d (5.86:1 on white). */
+  --color-text-tertiary: #64646d;
+  /* WCAG AA: #a1a1aa (2.57:1, failing) → #6e6e78 (5.05:1 on white). */
+  --color-text-quaternary: #6e6e78;
+  --color-text-inverse: #fafafa;
+
+  /* Section 2 — Borders (focus is identical in both modes) */
+  --color-border-default: rgba(0, 0, 0, 0.10);
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-border-focus: #3b82f6;
+  --color-border-input: rgba(0, 0, 0, 0.12);
+
+  /* Section 2 — Accent ramp (locked Tailwind blue; identical in both modes) */
+  --color-accent-50: #eff6ff;
+  --color-accent-100: #dbeafe;
+  --color-accent-200: #bfdbfe;
+  --color-accent-300: #93c5fd;
+  --color-accent-400: #60a5fa;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+  --color-accent-700: #1d4ed8;
+  --color-accent-800: #1e40af;
+  --color-accent-900: #1e3a8a;
+  --color-accent-950: #172554;
+
+  /* Section 2 — Semantic */
+  /* WCAG AA: success/warning used as text on white need darker shades
+     than the Tailwind-500 default. green-600 #16a34a (3.29:1) → green-700
+     #15803d (5.04:1); amber-600 #d97706 (3.21:1) → amber-700 #b45309 (5.03:1). */
+  --color-success: #15803d;
+  --color-success-bg: #f0fdf4;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fef2f2;
+  --color-info: #2563eb;
+
+  /* Section 2 — Calendar palette (identical in both modes) */
+  --color-cal-accent: #3b82f6;
+  --color-cal-emerald: #10b981;
+  --color-cal-amber: #f59e0b;
+  --color-cal-rose: #f43f5e;
+  --color-cal-violet: #8b5cf6;
+  --color-cal-cyan: #06b6d4;
+
+  /* Section 2 — Permission badges. Same WCAG AA text-contrast reasoning as
+     semantic tokens: perm-write mirrors success (3.29:1 → 5.04:1), and
+     perm-admin-permission mirrors warning (3.21:1 → 5.03:1). perm-admin
+     (#e11d48, 4.70:1) and perm-read (#2563eb, 5.19:1) already pass. */
+  --color-perm-admin: #e11d48;
+  --color-perm-admin-permission: #b45309;
+  --color-perm-write: #15803d;
+  --color-perm-read: #2563eb;
+
+  /* Section 2 — Type scale (size only; weight/line-height/tracking live in
+     the Tailwind fontSize config. The CSS var holds the size so .fc-* and
+     bespoke utilities can read font-size: var(--text-h3) etc.). */
+  --text-display: 48px;
+  --text-h1: 36px;
+  --text-h2: 28px;
+  --text-h3: 20px;
+  --text-body-lg: 18px;
+  --text-body: 15px;
+  --text-body-sm: 14px;
+  --text-caption: 13px;
+  --text-label: 12px;
+  --text-overline: 11px;
+  --text-mono: 13px;
+
+  /* Section 2 — Spacing (base unit 4px) */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* Section 2 — Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Section 2 — Shadows (light) */
+  --shadow-popover: 0 8px 24px 0 rgba(0, 0, 0, 0.10), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-modal: 0 16px 48px 0 rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow-toast: 0 4px 16px 0 rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.35);
+
+  /* Section 2 — Motion durations */
+  --duration-instant: 75ms;
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+
+  /* Section 2 — Motion easings */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Section 2 — Z-index */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-sidebar: 1200;
+  --z-modal-backdrop: 1300;
+  --z-modal: 1310;
+  --z-toast: 1400;
+
+  /* Section 3 — Typography (font families) */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Section 4 — Layout geometry */
+  --sidebar-width: 256px;
+  --sidebar-width-collapsed: 64px;
+  --sidebar-width-drawer: 288px;
+  --topbar-height: 56px;
+  --content-max-width: 1280px;
+  --content-gutter: 32px;
+  --content-gutter-mobile: 16px;
+}
+
+/* Dark mode overrides. Only tokens that change between light and dark
+   appear here; the rest cascade from :root. */
+.dark {
+  /* Section 2 — Accent override: accent-500 (#3B82F6, brand hue) reads 3.67:1
+     with white text — below WCAG AA 4.5:1 for normal text. In dark mode,
+     dark:bg-accent-500 is the primary button fill; darken to accent-600
+     (#2563eb, 5.17:1) so white-on-accent buttons pass. */
+  --color-accent-500: #2563eb;
+
+  /* Section 2 — Background surfaces */
+  --color-bg-canvas: #09090b;
+  --color-bg-surface: #18181b;
+  --color-bg-elevated: #27272a;
+  --color-bg-hover: rgba(255, 255, 255, 0.04);
+  --color-bg-sidebar: rgba(24, 24, 27, 0.72);
+  --color-bg-topbar: rgba(9, 9, 11, 0.72);
+  --color-bg-overlay: rgba(0, 0, 0, 0.60);
+  --color-bg-auth: radial-gradient(ellipse at top, #18181b 0%, #09090b 60%);
+
+  /* Section 2 — Text */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-text-quaternary: #52525b;
+  --color-text-inverse: #09090b;
+
+  /* Section 2 — Borders */
+  --color-border-default: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-border-input: rgba(255, 255, 255, 0.10);
+
+  /* Section 2 — Semantic */
+  --color-success: #22c55e;
+  --color-success-bg: rgba(34, 197, 94, 0.12);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-info: #3b82f6;
+
+  /* Section 2 — Permission badges */
+  --color-perm-admin: #f43f5e;
+  --color-perm-admin-permission: #f59e0b;
+  --color-perm-write: #22c55e;
+  --color-perm-read: #60a5fa;
+
+  /* Section 2 — Shadows (dark mode luminance stacking) */
+  --shadow-popover: 0 8px 24px 0 rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-modal: 0 16px 48px 0 rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-toast: 0 4px 16px 0 rgba(0, 0, 0, 0.40), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.45);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base layer tweaks
+ * ------------------------------------------------------------------------- */
+
+@layer base {
+  html {
+    color-scheme: light dark;
+    /* CSS-level backstop for the FOUC buster in <head>. If the inline script
+       ever fails to run, this keeps the .dark rules from flashing the wrong
+       palette. */
+    background-color: var(--color-bg-canvas);
+  }
+
+  body {
+    background-color: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv01', 'ss03';
+    font-size: var(--text-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code,
+  kbd,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  ::selection {
+    background-color: var(--color-accent-200);
+    color: var(--color-accent-900);
+  }
+
+  .dark ::selection {
+    background-color: var(--color-accent-500);
+    color: var(--color-text-inverse);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent-500);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* FullCalendar theme overrides live in calendar.css (imported by calendar.js). */

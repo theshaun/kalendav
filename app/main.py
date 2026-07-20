@@ -4,11 +4,13 @@ from app.database import init_db
 from app.init_data import create_admin_user
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from app.caldav.router import router as caldav_router
 from app.ics_feed.router import router as ics_router
 from app.admin.router import router as admin_router
 from app.auth.session_deps import LoginRequiredException
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 
 @asynccontextmanager
@@ -23,6 +25,19 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+# Static asset mount. In prod the Vite build populates app/static/dist/.
+# In dev (VITE_DEV=true) the directory may not exist yet — the dev server
+# at :5173 serves assets directly and templates use the vite_asset filter
+# to point at it. We mount a tmpdir fallback so import-time never crashes.
+_static_dist = Path("app/static/dist")
+if _static_dist.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dist)), name="static")
+else:
+    import tempfile
+
+    _fallback = Path(tempfile.mkdtemp(prefix="kalendav-static-"))
+    app.mount("/static", StaticFiles(directory=str(_fallback)), name="static")
 
 
 @app.exception_handler(LoginRequiredException)
@@ -51,7 +66,14 @@ async def well_known_caldav(request: Request):
                 "Content-Length": "0",
             },
         )
-    return RedirectResponse(url="/dav/", status_code=301)
+    # RFC 6764 §3.3: iOS requires an ABSOLUTE Location URL here.
+    base = settings.base_uri.rstrip("/")
+    if not base or base.endswith("localhost:8000"):
+        fwd_proto = request.headers.get("x-forwarded-proto", "http")
+        fwd_host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        if fwd_host:
+            base = f"{fwd_proto}://{fwd_host}"
+    return RedirectResponse(url=f"{base}/dav/", status_code=301)
 
 
 @app.api_route("/.well-known/carddav", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])
