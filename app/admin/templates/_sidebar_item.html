@@ -1,0 +1,42 @@
+{# Single sidebar nav item. Expects href, label, icon in scope.
+   Active detection: exact match for the dashboard root; prefix match
+   everywhere else so sub-routes (e.g. /admin/users/create) stay highlighted.
+   #}
+{%- set _path = request.url.path -%}
+{%- set _is_active = (_path == href) or (href != '/admin/' and _path.startswith(href + '/')) -%}
+{%- set _icon_size = 'h-4 w-4' -%}
+{%- if _is_active %}{%- set _active = true %}{%- else %}{%- set _active = false %}{%- endif -%}
+{# md-and-below rail: icon-only, square tile. lg: full item with label. #}
+<a
+  href="{{ href }}"
+  aria-current="{% if _active %}page{% endif %}"
+  class="
+    group relative flex items-center gap-2 rounded-md
+    h-10 px-3
+    text-body-sm font-medium
+    transition-colors duration-instant ease-out
+    focus-visible:shadow-focus focus-visible:outline-none
+    lg:px-3 lg:gap-3 lg:h-9
+    {% if _active %}
+      bg-hover text-text-primary
+    {% else %}
+      text-text-secondary hover:bg-hover hover:text-text-primary
+    {% endif %}
+  "
+  {% if not _active %}data-tooltip-md="{{ label }}"{% endif %}
+>
+  {# Active accent bar (left edge). #}
+  <span
+    aria-hidden="true"
+    class="
+      absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-accent-500
+      transition-opacity duration-instant ease-out
+      {% if _active %}opacity-100{% else %}opacity-0 group-hover:opacity-40{% endif %}
+    "
+  ></span>
+  <i
+    data-lucide="{{ icon }}"
+    class="{{ _icon_size }} shrink-0 {% if _active %}text-accent-500 dark:text-accent-400{% else %}text-current group-hover:text-current{% endif %}"
+  ></i>
+  <span class="truncate hidden lg:block">{{ label }}</span>
+</a>

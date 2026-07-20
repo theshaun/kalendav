@@ -1,0 +1,130 @@
+{# Sidebar partial. Included from _base.html.
+   - Layout: 3 rows — brand (top), nav (middle, scroll), user footer (bottom).
+   - Width:  256px at lg+, 64px icon-rail at md–lg, off-canvas drawer below md.
+   - Glass:  bg-sidebar + backdrop blur per DESIGN.md §1/§2.
+   - Role conditional nav via user.is_admin (the calendar role bug fix lives here).
+   #}
+
+{# Build the avatar initials once. #}
+{%- set _name = (user.username or 'U') -%}
+{%- set _parts = _name.split() -%}
+{%- set _initials = ((_parts[0][0] if _parts else _name[0]) + (_parts[-1][0] if _parts | length > 1 else '')).upper() -%}
+
+{# Mobile drawer backdrop. md+ the sidebar is in-flow so the backdrop stays hidden. #}
+<div
+  id="sidebar-backdrop"
+  class="fixed inset-0 z-sidebar bg-overlay backdrop-blur-sm md:hidden hidden"
+  aria-hidden="true"
+></div>
+
+<aside
+  id="app-sidebar"
+  class="
+    fixed md:sticky inset-y-0 left-0 z-sidebar flex flex-col
+    h-screen md:h-screen
+    w-sidebar-drawer md:w-sidebar-collapsed lg:w-sidebar
+    bg-sidebar backdrop-blur-xl backdrop-saturate-150
+    border-r border-border-subtle
+    -translate-x-full md:translate-x-0
+    transition-transform duration-base ease-spring
+    shrink-0
+  "
+  aria-label="Primary navigation"
+>
+  {# 1. Brand row. #}
+  <div class="flex items-center gap-2 h-topbar px-4 md:px-3 lg:px-5 border-b border-border-subtle shrink-0">
+    <a
+      href="{% if user.is_admin %}/admin/{% else %}/admin/my-dashboard{% endif %}"
+      class="flex items-center gap-2 min-w-0 text-text-primary hover:text-text-primary focus-visible:shadow-focus focus-visible:outline-none rounded-md"
+      aria-label="KalenDAV home"
+    >
+      <span class="inline-flex items-center justify-center h-8 w-8 rounded-md bg-accent-500 text-white shrink-0">
+        <i data-lucide="calendar-check" class="h-4 w-4"></i>
+      </span>
+      <span class="font-sans font-semibold text-body-lg tracking-tight truncate hidden lg:block">KalenDAV</span>
+    </a>
+  </div>
+
+  {# 2. Nav. Scrollable region between brand and footer. #}
+  <nav class="flex-1 overflow-y-auto px-2 md:px-1 lg:px-2 py-4" aria-label="Main">
+    <ul class="space-y-0.5">
+      {% if user.is_admin %}
+        {# Admin nav. #}
+        {% set _admin_items = [
+          ('/admin/',            'Dashboard',  'layout-dashboard'),
+          ('/admin/calendar',    'Calendar',   'calendar-days'),
+          ('/admin/users',       'Users',      'users'),
+          ('/admin/calendars',   'Calendars',  'calendar'),
+          ('/admin/api-keys',    'API Keys',   'key-round'),
+        ] %}
+        {% for href, label, icon in _admin_items %}
+          <li>{% include '_sidebar_item.html' %}</li>
+        {% endfor %}
+      {% else %}
+        {# User nav. #}
+        {% set _user_items = [
+          ('/admin/my-dashboard', 'My Dashboard',  'layout-dashboard'),
+          ('/admin/calendar',     'Calendar',      'calendar-days'),
+          ('/admin/my-calendars', 'My Calendars',  'calendar'),
+          ('/admin/my-api-keys',  'My API Keys',   'key-round'),
+        ] %}
+        {% for href, label, icon in _user_items %}
+          <li>{% include '_sidebar_item.html' %}</li>
+        {% endfor %}
+      {% endif %}
+    </ul>
+  </nav>
+
+  {# 3. User footer. #}
+  <div class="shrink-0 border-t border-border-subtle p-2 md:p-1 lg:p-2">
+    <details class="group relative">
+      <summary
+        class="
+          flex items-center gap-2 p-2 rounded-md cursor-pointer
+          text-text-secondary hover:bg-hover hover:text-text-primary
+          transition-colors duration-instant ease-out
+          focus-visible:shadow-focus focus-visible:outline-none
+          [&::-webkit-details-marker]:hidden
+        "
+      >
+        <span class="inline-flex items-center justify-center h-8 w-8 rounded-full bg-accent-500/15 text-accent-500 dark:text-accent-400 text-label font-semibold shrink-0">
+          {{ _initials }}
+        </span>
+        <span class="flex-1 min-w-0 text-left truncate text-body-sm text-text-primary hidden lg:block">{{ user.username }}</span>
+        <i data-lucide="chevrons-up-down" class="hidden lg:block h-4 w-4 shrink-0 text-text-tertiary"></i>
+      </summary>
+
+      {# Dropdown. Positioned above the footer so it never clips off-screen. #}
+      <div
+        class="
+          absolute bottom-full left-0 right-0 lg:left-2 lg:right-2 mb-2
+          bg-elevated border border-border-default rounded-lg shadow-popover
+          p-1 z-dropdown
+        "
+        role="menu"
+      >
+        <div class="px-3 py-2 hidden lg:block">
+          <p class="text-body-sm font-medium text-text-primary truncate">{{ user.username }}</p>
+          <p class="text-caption text-text-tertiary">{% if user.is_admin %}Administrator{% else %}User{% endif %}</p>
+        </div>
+        <a
+          href="{% if user.is_admin %}/admin/{% else %}/admin/my-dashboard{% endif %}"
+          class="flex items-center gap-2 px-3 py-2 rounded-md text-body-sm text-text-secondary hover:bg-hover hover:text-text-primary transition-colors duration-instant ease-out"
+          role="menuitem"
+        >
+          <i data-lucide="user" class="h-4 w-4"></i>
+          <span>Profile</span>
+        </a>
+        <div class="my-1 h-px bg-border-subtle"></div>
+        <a
+          href="/admin/logout"
+          class="flex items-center gap-2 px-3 py-2 rounded-md text-body-sm text-danger hover:bg-danger-bg transition-colors duration-instant ease-out"
+          role="menuitem"
+        >
+          <i data-lucide="log-out" class="h-4 w-4"></i>
+          <span>Sign out</span>
+        </a>
+      </div>
+    </details>
+  </div>
+</aside>

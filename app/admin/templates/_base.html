@@ -1,0 +1,118 @@
+{# Unified glassy shell. Every authenticated page extends this. Wave 3. #}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="KalenDAV admin — CalDAV server with calendars, sharing, and ICS feeds">
+  <title>{% block title %}KalenDAV{% endblock %} · KalenDAV</title>
+
+  {# FOUC buster — preserved verbatim from the legacy base.html (DESIGN.md §8). #}
+  <script>
+    (function () {
+      var stored = localStorage.getItem('darkMode');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (stored === 'true' || (!stored && prefersDark)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  {# Vite-built CSS bundle (cssCodeSplit: false → single 'style.css' entry). #}
+  <link rel="stylesheet" href="{{ 'style.css' | vite_asset }}">
+
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="min-h-screen bg-canvas text-text-primary font-sans antialiased">
+  <div class="flex min-h-screen">
+    {% include '_sidebar.html' %}
+
+    {# Topbar + content. <main> lives inside the topbar partial so the sticky
+       header and content scroll as a single column. #}
+    <div class="flex flex-1 flex-col min-w-0">
+      <header class="sticky top-0 z-sticky h-topbar flex items-center gap-4 px-content-gutter-mobile md:px-content-gutter bg-topbar backdrop-blue-xl backdrop-saturate-150 border-b border-border-subtle">
+        {# Mobile hamburger — toggles sidebar drawer (inline script at bottom). #}
+        <button
+          type="button"
+          id="sidebarToggle"
+          class="md:hidden inline-flex items-center justify-center h-10 w-10 rounded-md text-text-secondary hover:bg-hover hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Open navigation"
+          aria-controls="app-sidebar"
+          aria-expanded="false"
+        >
+          <i data-lucide="menu" class="h-5 w-5"></i>
+        </button>
+
+        <div class="flex-1 min-w-0">
+          {# Visible page heading. Defaults to the title-block content so children
+             that only override `title` get a matching H1 for free; override
+             `page_title` to diverge. #}
+          <h1 class="text-h3 text-text-primary truncate">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
+        </div>
+
+        {# Center search slot — placeholder for Wave 4. #}
+        {% block search %}{% endblock %}
+
+        {# Right slot: dark toggle is wired by main.js; user menu lives in the
+           sidebar footer on md+ and is reachable via the hamburger on mobile. #}
+        <button
+          type="button"
+          id="darkModeToggle"
+          class="inline-flex items-center justify-center h-10 w-10 rounded-md text-text-secondary hover:bg-hover hover:text-text-primary transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Toggle dark mode"
+        >
+          {# Sun shown in dark mode (action: switch to light); moon in light. #}
+          <i data-lucide="sun" class="hidden dark:block h-5 w-5"></i>
+          <i data-lucide="moon" class="block dark:hidden h-5 w-5"></i>
+        </button>
+      </header>
+
+      <main class="flex-1 px-content-gutter-mobile md:px-content-gutter py-6 md:py-8">
+        <div class="mx-auto w-full max-w-content">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+  </div>
+
+  {# HTMX modal target. closeModal() in main.js empties this. #}
+  <div id="modal-container" aria-live="polite"></div>
+
+  {# Vite-built global entry (htmx, lucide, dark mode, closeModal/refreshCalendar globals). #}
+  <script type="module" src="{{ 'app/static/src/main.js' | vite_asset }}"></script>
+
+  {# Sidebar drawer toggle — scope limited to the shell. No effect on md+ where
+     the sidebar is always visible (icon-rail or full). #}
+  <script>
+    (function () {
+      var toggle = document.getElementById('sidebarToggle');
+      var sidebar = document.getElementById('app-sidebar');
+      var backdrop = document.getElementById('sidebar-backdrop');
+      if (!toggle || !sidebar) return;
+
+      function setOpen(open) {
+        sidebar.classList.toggle('translate-x-0', open);
+        sidebar.classList.toggle('-translate-x-full', !open);
+        sidebar.setAttribute('aria-hidden', String(!open));
+        toggle.setAttribute('aria-expanded', String(open));
+        if (backdrop) backdrop.classList.toggle('hidden', !open);
+      }
+
+      toggle.addEventListener('click', function () {
+        var isOpen = sidebar.classList.contains('translate-x-0');
+        setOpen(!isOpen);
+      });
+      if (backdrop) backdrop.addEventListener('click', function () { setOpen(false); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('translate-x-0')) setOpen(false);
+      });
+      // Reset on resize past md so a returning mobile user does not see a stuck drawer.
+      window.addEventListener('resize', function () {
+        if (window.innerWidth >= 768) setOpen(false);
+      });
+    })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
