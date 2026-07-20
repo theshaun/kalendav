@@ -1,48 +1,162 @@
 {% extends "base.html" %}
 
-{% block title %}Generate API Key{% endblock %}
+{% block title %}New API Key{% endblock %}
+{% block page_title %}New API Key{% endblock %}
 
 {% block content %}
 <div class="mb-6">
-    <a href="/admin/api-keys" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to API Keys</a>
+    <a href="/admin/api-keys"
+       class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary hover:text-text-primary transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus rounded-md">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        <span>Back to API Keys</span>
+    </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-lg">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">Generate API Key</h1>
-    
+<div class="bg-surface rounded-lg shadow-popover p-6 max-w-2xl">
     {% if generated_key %}
-    <div class="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded">
-        <p class="text-green-800 dark:text-green-200 font-medium mb-2">API Key Generated!</p>
-        <p class="text-sm text-green-700 dark:text-green-300 mb-3">Copy this key now. You won't be able to see it again.</p>
-        <code class="block p-3 bg-white dark:bg-gray-900 border dark:border-gray-600 rounded text-sm break-all text-gray-800 dark:text-gray-200">{{ generated_key }}</code>
-    </div>
-    {% endif %}
-    
-    <form action="/admin/api-keys/create" method="post" class="space-y-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input type="text" name="name" required placeholder="e.g., Mobile App" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+    {# === Post-creation: reveal-once success panel === #}
+    <div class="flex items-start gap-3 mb-5">
+        <div class="flex items-center justify-center h-10 w-10 rounded-full bg-success-bg text-success shrink-0">
+            <i data-lucide="check-circle-2" class="h-5 w-5"></i>
         </div>
-        
+        <div class="min-w-0">
+            <h1 class="text-h2 text-text-primary">API key generated</h1>
+            <p class="text-text-secondary text-body-sm mt-1">Copy this key now. <strong class="text-text-primary">It will not be shown again.</strong></p>
+        </div>
+    </div>
+
+    <div class="bg-canvas border border-border-default rounded-md p-4 mb-3">
+        <div class="flex items-center gap-3">
+            <code id="generated-key" class="flex-1 font-mono text-body-sm text-text-primary break-all">{{ generated_key }}</code>
+            <button type="button"
+                    id="copy-key-btn"
+                    data-copy="{{ generated_key }}"
+                    class="shrink-0 inline-flex items-center gap-1.5 bg-surface border border-border-default hover:bg-hover text-text-primary text-body-sm font-medium px-3 py-1.5 rounded-md transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                    aria-label="Copy API key to clipboard">
+                <i data-lucide="copy" class="h-4 w-4" data-copy-icon></i>
+                <span data-copy-label>Copy</span>
+            </button>
+        </div>
+        <p role="status" aria-live="polite" id="copy-status" class="text-label text-text-tertiary mt-2 h-4"></p>
+    </div>
+
+    <div class="flex items-start gap-2 p-3 rounded-md bg-warning-bg text-warning text-body-sm mb-6">
+        <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 mt-0.5"></i>
+        <p>Treat this key like a password. Store it in a secret manager — once you leave or refresh this page, it cannot be recovered.</p>
+    </div>
+
+    <div class="flex items-center gap-2 pt-4 border-t border-border-subtle">
+        <a href="/admin/api-keys"
+           class="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+            <i data-lucide="check" class="h-4 w-4"></i>
+            <span>I copied it — back to API keys</span>
+        </a>
+        <a href="/admin/api-keys/create"
+           class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-body-sm text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+            <i data-lucide="rotate-cw" class="h-4 w-4"></i>
+            <span>Generate another</span>
+        </a>
+    </div>
+
+    {% else %}
+    {# === Pre-creation: form === #}
+    <h1 class="text-h2 text-text-primary mb-1">New API Key</h1>
+    <p class="text-text-secondary text-body-sm mb-6">Issue a long-lived token for a user. Raw key is shown once after creation.</p>
+
+    <form action="/admin/api-keys/create" method="post" class="space-y-5">
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">User</label>
-            <select name="user_id" required class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label for="name" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Name
+            </label>
+            <input type="text"
+                   name="name"
+                   id="name"
+                   required
+                   placeholder="e.g., Mobile App"
+                   class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary placeholder-text-tertiary focus:border-accent-500 outline-none transition-colors duration-instant">
+            <p class="text-label text-text-tertiary mt-1.5">A short label so you remember where this key is used.</p>
+        </div>
+
+        <div>
+            <label for="user_id" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                User
+            </label>
+            <select name="user_id"
+                    id="user_id"
+                    required
+                    class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary focus:border-accent-500 outline-none transition-colors duration-instant">
                 {% for u in users %}
                 <option value="{{ u.id }}">{{ u.username }}</option>
                 {% endfor %}
             </select>
         </div>
-        
+
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expires At (optional)</label>
-            <input type="datetime-local" name="expires_at" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label for="expires_at" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Expires At
+                <span class="text-text-tertiary font-normal">(optional)</span>
+            </label>
+            <input type="datetime-local"
+                   name="expires_at"
+                   id="expires_at"
+                   class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary placeholder-text-tertiary focus:border-accent-500 outline-none transition-colors duration-instant">
+            <p class="text-label text-text-tertiary mt-1.5">Leave blank for a key that never expires.</p>
         </div>
-        
-        <div class="pt-4">
-            <button type="submit" class="w-full bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-                {% if generated_key %}Generate Another Key{% else %}Generate Key{% endif %}
+
+        <div class="flex items-center gap-2 pt-4 border-t border-border-subtle">
+            <button type="submit"
+                    class="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                <i data-lucide="key-round" class="h-4 w-4"></i>
+                <span>Generate Key</span>
             </button>
+            <a href="/admin/api-keys"
+               class="inline-flex items-center justify-center px-4 py-2 rounded-md text-body-sm text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                Cancel
+            </a>
         </div>
     </form>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var btn = document.getElementById('copy-key-btn');
+        if (!btn) return;
+        var status = document.getElementById('copy-status');
+
+        btn.addEventListener('click', async function () {
+            var value = btn.getAttribute('data-copy') || '';
+            try {
+                await navigator.clipboard.writeText(value);
+            } catch (e) {
+                if (status) status.textContent = 'Clipboard blocked by browser — select the key and copy manually.';
+                return;
+            }
+            // Icon swap: copy -> check
+            var icon = btn.querySelector('[data-copy-icon]');
+            if (icon) {
+                icon.removeAttribute('data-lucide');
+                icon.setAttribute('data-lucide', 'check');
+                icon.classList.add('text-success');
+            }
+            var label = btn.querySelector('[data-copy-label]');
+            if (label) label.textContent = 'Copied';
+            if (status) status.textContent = 'Copied to clipboard.';
+            btn.setAttribute('aria-pressed', 'true');
+
+            setTimeout(function () {
+                if (icon) {
+                    icon.setAttribute('data-lucide', 'copy');
+                    icon.classList.remove('text-success');
+                }
+                if (label) label.textContent = 'Copy';
+                if (status) status.textContent = '';
+                btn.removeAttribute('aria-pressed');
+                if (window.lucide) window.lucide.createIcons();
+            }, 2000);
+        });
+    })();
+</script>
 {% endblock %}

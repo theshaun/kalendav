@@ -1,78 +1,160 @@
 {% extends "base.html" %}
 
-{% block title %}Manage Shares{% endblock %}
+{% block title %}Shares{% endblock %}
+{% block page_title %}Shares · {{ calendar.name }}{% endblock %}
 
 {% block content %}
 <div class="mb-6">
-    <a href="/admin/calendars" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to Calendars</a>
+    <a href="/admin/calendars"
+       class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary hover:text-text-primary transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus rounded-md">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        <span>Back to Calendars</span>
+    </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">{{ calendar.name }}</h1>
-    <p class="text-gray-600 dark:text-gray-400">Owner: {{ calendar.user.username }}</p>
+{# Header card #}
+<div class="bg-surface rounded-lg shadow-popover p-6 mb-6">
+    <div class="flex items-center gap-3">
+        <span class="inline-block h-3 w-3 rounded-full shrink-0"
+              style="background-color: {{ calendar.color or '#3B82F6' }}"
+              aria-hidden="true"></span>
+        <div class="min-w-0">
+            <h1 class="text-h2 text-text-primary truncate">{{ calendar.name }}</h1>
+            <p class="text-text-secondary text-body-sm mt-0.5">
+                Owner:
+                <span class="font-mono text-text-primary">{{ calendar.user.username }}</span>
+            </p>
+        </div>
+    </div>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Add Share</h2>
-    
-    <form action="/admin/calendars/{{ calendar.id }}/shares" method="post" class="flex gap-4">
-        <select name="user_id" required class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">Select User</option>
-            {% for u in users %}
-            {% if u.id != calendar.user_id %}
-            <option value="{{ u.id }}">{{ u.username }}</option>
-            {% endif %}
-            {% endfor %}
-        </select>
-        
-        <select name="permission" required class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="read">Read Only</option>
-            <option value="write">Read & Write</option>
-            <option value="admin">Full Access</option>
-        </select>
-        
-        <button type="submit" class="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-            Add
-        </button>
-    </form>
-</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {# Left: current shares #}
+    <div class="bg-surface rounded-lg shadow-popover p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-h3 text-text-primary">Current Shares</h2>
+            <span class="text-label text-text-tertiary uppercase tracking-wide">
+                {{ calendar.shares|length }} {% if calendar.shares|length == 1 %}share{% else %}shares{% endif %}
+            </span>
+        </div>
 
-{% if calendar.shares %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-700">
-            <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">User</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Permission</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+        {% if calendar.shares %}
+        <ul class="divide-y divide-border-subtle">
             {% for share in calendar.shares %}
-            <tr>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {{ share.user.username }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ share.permission }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {{ share.created_at.strftime('%Y-%m-%d') }}
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <form action="/admin/shares/{{ share.id }}/delete" method="post" class="inline">
-                        <button type="submit" class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300" onclick="return confirm('Remove this share?')">Remove</button>
+            <li class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="flex items-center justify-center h-8 w-8 rounded-full bg-hover text-text-secondary shrink-0">
+                        <i data-lucide="user" class="h-4 w-4"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="font-mono text-body-sm text-text-primary truncate">{{ share.user.username }}</p>
+                        <p class="text-label text-text-tertiary">Added {{ share.created_at.strftime('%Y-%m-%d') }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    {# Permission badge — token chosen by permission value #}
+                    {% if share.permission.value == 'admin' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-sm bg-perm-admin-permission text-perm-admin-permission text-label font-medium uppercase tracking-wide">
+                        {{ share.permission.value }}
+                    </span>
+                    {% elif share.permission.value == 'write' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-sm bg-perm-write text-perm-write text-label font-medium uppercase tracking-wide">
+                        {{ share.permission.value }}
+                    </span>
+                    {% elif share.permission.value == 'read' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-sm bg-perm-read text-perm-read text-label font-medium uppercase tracking-wide">
+                        {{ share.permission.value }}
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-sm bg-hover text-text-tertiary text-label font-medium uppercase tracking-wide">
+                        {{ share.permission.value }}
+                    </span>
+                    {% endif %}
+                    <form action="/admin/shares/{{ share.id }}/delete" method="post" class="inline"
+                          onsubmit="return confirm('Remove access for &ldquo;{{ share.user.username }}&rdquo;?');">
+                        <button type="submit"
+                                class="inline-flex items-center justify-center h-8 w-8 rounded-md text-danger hover:bg-danger-bg transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                                aria-label="Remove share for {{ share.user.username }}">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
                     </form>
-                </td>
-            </tr>
+                </div>
+            </li>
             {% endfor %}
-        </tbody>
-    </table>
+        </ul>
+        {% else %}
+        <div class="flex flex-col items-center text-center py-8">
+            <div class="flex items-center justify-center h-10 w-10 rounded-full bg-hover text-text-tertiary mb-3">
+                <i data-lucide="users" class="h-5 w-5"></i>
+            </div>
+            <p class="text-body-sm font-medium text-text-primary">Not shared yet</p>
+            <p class="text-label text-text-tertiary mt-1 max-w-xs">Grant another user read, write, or admin access from the right.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Right: add-share form #}
+    <div class="bg-surface rounded-lg shadow-popover p-6">
+        <h2 class="text-h3 text-text-primary mb-1">Add Share</h2>
+        <p class="text-text-secondary text-body-sm mb-5">Grant access to {{ calendar.name }}.</p>
+
+        <form action="/admin/calendars/{{ calendar.id }}/shares" method="post" class="space-y-5">
+            <div>
+                <label for="user_id" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                    User
+                </label>
+                <select name="user_id"
+                        id="user_id"
+                        required
+                        class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary focus:border-accent-500 outline-none transition-colors duration-instant">
+                    <option value="">Select a user…</option>
+                    {% for u in users %}
+                    {% if u.id != calendar.user_id %}
+                    <option value="{{ u.id }}">{{ u.username }}</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <span class="block text-body-sm font-medium text-text-primary mb-1.5">Permission</span>
+                <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Permission level">
+                    {# Read #}
+                    <label class="relative flex flex-col gap-1 rounded-md border border-border-default p-3 cursor-pointer hover:border-accent-500 hover:bg-hover transition-colors duration-instant has-[:checked]:border-accent-500 has-[:checked]:bg-hover">
+                        <input type="radio" name="permission" value="read" class="sr-only peer" checked>
+                        <span class="flex items-center gap-1.5 text-body-sm font-medium text-text-primary">
+                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-read"></span>
+                            Read
+                        </span>
+                        <span class="text-label text-text-tertiary">View only</span>
+                    </label>
+                    {# Write #}
+                    <label class="relative flex flex-col gap-1 rounded-md border border-border-default p-3 cursor-pointer hover:border-accent-500 hover:bg-hover transition-colors duration-instant has-[:checked]:border-accent-500 has-[:checked]:bg-hover">
+                        <input type="radio" name="permission" value="write" class="sr-only peer">
+                        <span class="flex items-center gap-1.5 text-body-sm font-medium text-text-primary">
+                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-write"></span>
+                            Write
+                        </span>
+                        <span class="text-label text-text-tertiary">View + edit</span>
+                    </label>
+                    {# Admin #}
+                    <label class="relative flex flex-col gap-1 rounded-md border border-border-default p-3 cursor-pointer hover:border-accent-500 hover:bg-hover transition-colors duration-instant has-[:checked]:border-accent-500 has-[:checked]:bg-hover">
+                        <input type="radio" name="permission" value="admin" class="sr-only peer">
+                        <span class="flex items-center gap-1.5 text-body-sm font-medium text-text-primary">
+                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-perm-admin-permission"></span>
+                            Admin
+                        </span>
+                        <span class="text-label text-text-tertiary">Full control</span>
+                    </label>
+                </div>
+            </div>
+
+            <button type="submit"
+                    class="w-full inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                <i data-lucide="plus" class="h-4 w-4"></i>
+                <span>Add Share</span>
+            </button>
+        </form>
+    </div>
 </div>
-{% else %}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <p class="text-gray-500 dark:text-gray-400">No shares yet. Add a share above to give someone access to this calendar.</p>
-</div>
-{% endif %}
 {% endblock %}

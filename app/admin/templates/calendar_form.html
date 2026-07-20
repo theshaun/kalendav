@@ -1,47 +1,164 @@
 {% extends "base.html" %}
 
-{% block title %}{% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}{% endblock %}
+{% block title %}{% if calendar %}Edit Calendar{% else %}New Calendar{% endif %}{% endblock %}
+{% block page_title %}{% if calendar %}Edit Calendar{% else %}New Calendar{% endif %}{% endblock %}
 
 {% block content %}
 <div class="mb-6">
-    <a href="/admin/calendars" class="text-blue-600 dark:text-blue-400 hover:underline">&larr; Back to Calendars</a>
+    <a href="/admin/calendars"
+       class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary hover:text-text-primary transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus rounded-md">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        <span>Back to Calendars</span>
+    </a>
 </div>
 
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-lg">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">
-        {% if calendar %}Edit Calendar{% else %}Create Calendar{% endif %}
+<div class="bg-surface rounded-lg shadow-popover p-6 max-w-2xl">
+    <h1 class="text-h2 text-text-primary mb-1">
+        {% if calendar %}Edit Calendar{% else %}New Calendar{% endif %}
     </h1>
-    
-    <form action="{% if calendar %}/admin/calendars/{{ calendar.id }}/edit{% else %}/admin/calendars/create{% endif %}" method="post" class="space-y-4">
+    <p class="text-text-secondary text-body-sm mb-6">
+        {% if calendar %}Update calendar details, color, and ownership.{% else %}Create a new calendar for any user.{% endif %}
+    </p>
+
+    <form action="{% if calendar %}/admin/calendars/{{ calendar.id }}/edit{% else %}/admin/calendars/create{% endif %}"
+          method="post"
+          class="space-y-5">
+        {# Name #}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
-            <input type="text" name="name" required value="{% if calendar %}{{ calendar.name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label for="name" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Name
+            </label>
+            <input type="text"
+                   name="name"
+                   id="name"
+                   required
+                   value="{% if calendar %}{{ calendar.name }}{% endif %}"
+                   class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary placeholder-text-tertiary focus:border-accent-500 outline-none transition-colors duration-instant">
         </div>
-        
+
+        {# Description #}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-            <textarea name="description" rows="3" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">{% if calendar %}{{ calendar.description or '' }}{% endif %}</textarea>
+            <label for="description" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Description
+                <span class="text-text-tertiary font-normal">(optional)</span>
+            </label>
+            <textarea name="description"
+                      id="description"
+                      rows="3"
+                      class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary placeholder-text-tertiary focus:border-accent-500 outline-none transition-colors duration-instant resize-y">{% if calendar %}{{ calendar.description or '' }}{% endif %}</textarea>
         </div>
-        
+
+        {# Color picker — polished row with swatch + hex + presets #}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
-            <input type="color" name="color" value="{% if calendar %}{{ calendar.color or '#3B82F6' }}{% else %}#3B82F6{% endif %}" class="w-full h-10 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label for="color" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Color
+            </label>
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="relative flex items-center gap-3 bg-canvas border border-border-default rounded-md px-3 py-2">
+                    <span id="color-swatch"
+                          class="inline-block h-6 w-6 rounded-md border border-border-strong shrink-0"
+                          style="background-color: {% if calendar %}{{ calendar.color or '#3B82F6' }}{% else %}#3B82F6{% endif %}"
+                          aria-hidden="true"></span>
+                    <span id="color-hex"
+                          class="font-mono text-body-sm text-text-primary uppercase"
+                          aria-live="polite">{% if calendar %}{{ calendar.color or '#3B82F6' }}{% else %}#3B82F6{% endif %}</span>
+                    {# Native picker is visually a small button so the OS dialog still works. #}
+                    <label for="color"
+                           class="inline-flex items-center justify-center h-7 w-7 rounded-md text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant cursor-pointer focus-within:shadow-focus"
+                           aria-label="Open system color picker">
+                        <i data-lucide="pipette" class="h-3.5 w-3.5 pointer-events-none"></i>
+                        <input type="color"
+                               name="color"
+                               id="color"
+                               value="{% if calendar %}{{ calendar.color or '#3B82F6' }}{% else %}#3B82F6{% endif %}"
+                               class="absolute inset-0 opacity-0 cursor-pointer">
+                    </label>
+                </div>
+
+                {# Preset palette — sets hidden input on click #}
+                <div class="flex items-center gap-1.5" role="group" aria-label="Preset colors">
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-accent)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Blue"></button>
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-emerald)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Emerald"></button>
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-amber)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Amber"></button>
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-rose)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Rose"></button>
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-violet)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Violet"></button>
+                    <button type="button" data-color-swatch style="background-color: var(--color-cal-cyan)"
+                            class="color-preset h-7 w-7 rounded-md border border-border-default hover:scale-110 focus-visible:outline-none focus-visible:shadow-focus transition-transform duration-instant"
+                            aria-label="Cyan"></button>
+                </div>
+            </div>
+            <p class="text-label text-text-tertiary mt-1.5">Pick a preset or use the system picker for a custom hex.</p>
         </div>
-        
+
+        {# Owner #}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Owner</label>
-            <select name="user_id" required class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label for="user_id" class="block text-body-sm font-medium text-text-primary mb-1.5">
+                Owner
+            </label>
+            <select name="user_id"
+                    id="user_id"
+                    required
+                    class="w-full bg-canvas border border-border-default rounded-md px-3 py-2 text-body-sm text-text-primary focus:border-accent-500 outline-none transition-colors duration-instant">
                 {% for u in users %}
                 <option value="{{ u.id }}" {% if calendar and calendar.user_id == u.id %}selected{% endif %}>{{ u.username }}</option>
                 {% endfor %}
             </select>
         </div>
-        
-        <div class="pt-4">
-            <button type="submit" class="w-full bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-600">
-                {% if calendar %}Update Calendar{% else %}Create Calendar{% endif %}
+
+        {# Action row #}
+        <div class="flex items-center gap-2 pt-4 border-t border-border-subtle">
+            <button type="submit"
+                    class="inline-flex items-center justify-center gap-2 bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2 rounded-md shadow-popover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                <i data-lucide="check" class="h-4 w-4"></i>
+                <span>{% if calendar %}Save changes{% else %}Create calendar{% endif %}</span>
             </button>
+            <a href="/admin/calendars"
+               class="inline-flex items-center justify-center px-4 py-2 rounded-md text-body-sm text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
+                Cancel
+            </a>
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var input = document.getElementById('color');
+        var swatch = document.getElementById('color-swatch');
+        var hex = document.getElementById('color-hex');
+        if (!input || !swatch || !hex) return;
+
+        function sync(value) {
+            swatch.style.backgroundColor = value;
+            hex.textContent = value.toUpperCase();
+            input.value = value;
+        }
+
+        input.addEventListener('input', function () { sync(input.value); });
+
+        document.querySelectorAll('[data-color-swatch]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var computed = window.getComputedStyle(btn).backgroundColor;
+                // Convert rgb()/rgba() to #hex
+                var m = computed.match(/\d+(?:\.\d+)?/g);
+                if (m) {
+                    var parts = m.slice(0, 3).map(function (n) { return parseInt(n, 10); });
+                    var value = '#' + parts.map(function (n) { return n.toString(16).padStart(2, '0'); }).join('');
+                    sync(value);
+                }
+            });
+        });
+    })();
+</script>
 {% endblock %}
