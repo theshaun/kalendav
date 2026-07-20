@@ -182,6 +182,31 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
+## Frontend Development
+
+The UI is built with [Vite](https://vitejs.dev/) + Tailwind v3.4. HTML templates
+consume hashed bundles through the `vite_asset` Jinja2 filter.
+
+```bash
+# Install JS deps (Node 20+ required)
+npm install
+
+# Start the Vite dev server on http://localhost:5173
+npm run dev
+
+# Production build -> app/static/dist/ (manifest.json + hashed chunks)
+npm run build
+```
+
+Run the FastAPI server with `VITE_DEV=true` so the `vite_asset` filter returns
+the dev server URLs (`http://localhost:5173/<entry>`) instead of looking up
+hashed filenames in `manifest.json`. In prod, `npm run build` must run before
+the app starts — templates will raise if `manifest.json` is missing.
+
+Multi-stage `Dockerfile` runs `npm run build` in a Node 20 stage and copies
+only `app/static/dist/` into the Python runtime image; Node deps and source
+do not ship.
+
 ## Development
 
 ```bash
