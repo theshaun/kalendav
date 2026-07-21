@@ -144,12 +144,20 @@
       meridiem: 'short'
     },
     eventDidMount: function (info) {
-      const color = info.event.extendedProps.color
-        || info.event.extendedProps.calendarColor
-        || info.event.extendedProps.event_color;
+      // FullCalendar consumes the source `color` field and exposes it as
+      // event.backgroundColor; calendarColor is the parent calendar's color
+      // (server-joined into extendedProps). Resolve override → calendar.
+      // Note: when source `color` is null, FC sets backgroundColor to the
+      // literal string "null" — filter that out before treating as truthy.
+      const eventBg = info.event.backgroundColor;
+      const override = (eventBg && eventBg !== "null") ? eventBg : null;
+      const color = override || info.event.extendedProps.calendarColor;
       if (color) {
-        info.el.style.backgroundColor = color;
-        info.el.style.borderColor = color;
+        // calendar.css paints an opaque linear-gradient sourced from
+        // --fc-event-bg-color on .fc-event, so backgroundColor is hidden.
+        // Update the variable the gradient reads to make the color visible
+        // while preserving the gradient aesthetic.
+        info.el.style.setProperty('--fc-event-bg-color', color);
       }
     },
     dateClick: function (info) {
