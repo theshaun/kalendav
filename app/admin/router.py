@@ -1245,6 +1245,8 @@ async def create_event(
     if calendar_id not in writable_ids:
         raise HTTPException(status_code=403, detail="Cannot create event in this calendar")
     
+    # Empty/whitespace tz must collapse to None so `if tz` falls back to UTC.
+    tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
     
     try:
@@ -1342,6 +1344,8 @@ async def update_event(
     if calendar_id not in writable_ids:
         raise HTTPException(status_code=403, detail="Cannot move event to this calendar")
     
+    # Empty/whitespace tz must collapse to None (see create_event).
+    tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
     
     try:

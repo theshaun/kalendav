@@ -80,7 +80,8 @@ def vite_asset(entry_name: str) -> str:
             entry is not present in the manifest.
     """
     if os.environ.get("VITE_DEV") == "true":
-        return f"{VITE_DEV_ORIGIN}/{entry_name}"
+        # /static/ prefix must match Vite's `base: '/static/'` in vite.config.js.
+        return f"{VITE_DEV_ORIGIN}/static/{entry_name}"
 
     manifest = _load_manifest()
     if entry_name not in manifest:

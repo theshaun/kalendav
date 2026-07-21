@@ -20,7 +20,7 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ./app/static:/app/app/static
+      - ./app:/app/app
       - ./package.json:/app/package.json
       - ./package-lock.json:/app/package-lock.json
       - ./vite.config.js:/app/vite.config.js
