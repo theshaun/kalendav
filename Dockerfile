@@ -4,6 +4,9 @@
 #   1. frontend-build — Node 20, builds Vite assets into /build/app/static/dist.
 #   2. runtime        — Python 3.11, copies the built dist/ in. Node deps and
 #                       source stay in stage 1; only the hashed bundles ship.
+#
+# Build arg:
+#   APP_VERSION — injected by CI on release builds; defaults to "dev".
 
 # ---------------------------------------------------------------------------
 # Stage 1: Build frontend assets
@@ -12,11 +15,9 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /build
 
-# Install deps first so the layer is cached when only source changes.
 COPY package.json package-lock.json* ./
 RUN npm install --no-audit --no-fund
 
-# Vite config, PostCSS, Tailwind, source, and design tokens.
 COPY tailwind.config.js postcss.config.js vite.config.js ./
 COPY app/static ./app/static
 
@@ -26,6 +27,8 @@ RUN npm run build
 # Stage 2: Python runtime
 # ---------------------------------------------------------------------------
 FROM python:3.11-slim
+
+ARG APP_VERSION=dev
 
 WORKDIR /app
 
@@ -39,8 +42,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Built frontend assets from stage 1.
 COPY --from=frontend-build /build/app/static/dist ./app/static/dist
+
+LABEL org.opencontainers.image.title="KalenDAV"
+LABEL org.opencontainers.image.description="Lightweight async CalDAV server"
+LABEL org.opencontainers.image.version="${APP_VERSION}"
+LABEL org.opencontainers.image.source="https://github.com/theshaun/KalenDAV"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ENV APP_VERSION=${APP_VERSION}
 
 EXPOSE 8000
 
