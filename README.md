@@ -4,7 +4,7 @@ A lightweight, async CalDAV server built with FastAPI and SQLAlchemy.
 
 ## Features
 
-- **CalDAV Protocol Support**: Full CalDAV operations (OPTIONS, PROPFIND, PROPPATCH, GET, PUT, DELETE, REPORT, MKCALENDAR)
+- **CalDAV Protocol Support**: Full CalDAV operations (OPTIONS, PROPFIND, PROPPATCH, GET, PUT, DELETE, REPORT, MKCALENDAR) with RFC 6764 service discovery and RFC 3744 access control
 - **Multiple Users**: Support for multiple user accounts
 - **Multiple Calendars**: Each user can have multiple calendars with custom colors
 - **Calendar Sharing**: Share calendars between users with read, write, or admin permissions
@@ -12,6 +12,7 @@ A lightweight, async CalDAV server built with FastAPI and SQLAlchemy.
 - **Recurring Events**: Full support for recurring events (daily, weekly, monthly, yearly)
 - **Calendar Management**: Rename calendars and change colors via CalDAV clients
 - **ICS Feed Support**: Access calendars via ICS feeds using API keys or Basic Auth
+- **ICS Import**: Upload `.ics` files from the web UI
 - **Admin UI**: Web-based administration panel for managing users, calendars, and shares
 - **User Dashboard**: Personal dashboard for non-admin users to manage their calendars
 - **Async**: Fully async using SQLAlchemy 2.0 async support
@@ -31,6 +32,21 @@ docker-compose up -d
 # ICS Feed: http://localhost:8000/ics/{calendar_id}?api_key=xxx
 ```
 
+#### Live Frontend Development
+
+The `docker-compose.yml` includes a `vite-dev` service that watches source
+files and serves them via HMR at `:5173`. The `caldav` service sets
+`VITE_DEV=true` so templates point at the dev server instead of the built
+manifest:
+
+```bash
+docker-compose up -d
+# Edit files in app/static/src/ — changes appear immediately in the browser.
+```
+
+For production builds, the multi-stage `Dockerfile` runs `npm run build`
+and copies only the hashed bundles into the runtime image.
+
 ### Manual Setup
 
 ```bash
@@ -40,6 +56,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install JS deps and build frontend (Node 20+ required)
+npm install
+npm run build
 
 # Copy environment file
 cp .env.example .env
@@ -55,6 +75,14 @@ python init_admin.py
 uvicorn app.main:app --reload
 ```
 
+For live frontend development, set `VITE_DEV=true` and run the Vite dev
+server separately:
+
+```bash
+VITE_DEV=true uvicorn app.main:app --reload
+npm run dev  # serves at http://localhost:5173
+```
+
 ## Configuration
 
 Configuration is done via environment variables (see `.env.example`):
@@ -66,6 +94,14 @@ Configuration is done via environment variables (see `.env.example`):
 | `ADMIN_USER` | Default admin username | `admin` |
 | `ADMIN_PASSWORD` | Default admin password | `admin` |
 | `DEBUG` | Enable debug mode | `false` |
+| `BASE_URI` | Override auto-detected server URL | `http://localhost:8000` |
+| `DEFAULT_TIMEZONE` | IANA timezone for naive datetimes | `UTC` |
+
+### Reverse Proxy
+
+KalenDAV auto-detects its public URL from `X-Forwarded-Proto` and
+`X-Forwarded-Host` headers — set `BASE_URI` only if the auto-detection
+doesn't match your public URL.
 
 ### Database URLs
 
@@ -115,9 +151,11 @@ Features:
 - **Event Management**: Create, edit, and delete events with a modern interface
 - **Recurring Events**: Set up daily, weekly, monthly, or yearly recurring events
 - **Time Slots**: Click on specific times in day/week view to create events with 30-minute default duration
+- **Event Colors**: Per-event color overrides or inherit from calendar color
 - **Calendar Colors**: Events display in their calendar's color
 - **Shared Calendars**: View events from calendars shared with you
-- **Permissions**: Edit rights are enforced - read-only calendars cannot be modified
+- **Permissions**: Edit rights are enforced — read-only calendars cannot be modified
+- **ICS Import**: Upload `.ics` files directly from the calendar view
 
 ### ICS Feeds
 
@@ -149,7 +187,7 @@ Shared calendars appear in both the CalDAV client and web calendar with clear pe
 
 ## Supported CalDAV Clients
 
-KalenDAV should works with most CalDAV-compatible clients:
+KalenDAV works with most CalDAV-compatible clients:
 
 **Desktop:**
 - Thunderbird (with Lightning)
@@ -160,14 +198,10 @@ KalenDAV should works with most CalDAV-compatible clients:
 **Mobile:**
 - iOS Calendar
 - Android (via DAVx⁵)
+- Android (via KashCal)
 
 **Web:**
 - Built-in web calendar at `/admin/calendar/`
-
-**Recommended Settings:**
-- Server URL: `http://your-server:8000/dav/`
-- Use SSL/TLS in production
-- Enable periodic sync (recommended: 15-30 minutes)
 
 ## Database Migrations
 
@@ -182,37 +216,16 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
-## Frontend Development
-
-The UI is built with [Vite](https://vitejs.dev/) + Tailwind v3.4. HTML templates
-consume hashed bundles through the `vite_asset` Jinja2 filter.
-
-```bash
-# Install JS deps (Node 20+ required)
-npm install
-
-# Start the Vite dev server on http://localhost:5173
-npm run dev
-
-# Production build -> app/static/dist/ (manifest.json + hashed chunks)
-npm run build
-```
-
-Run the FastAPI server with `VITE_DEV=true` so the `vite_asset` filter returns
-the dev server URLs (`http://localhost:5173/<entry>`) instead of looking up
-hashed filenames in `manifest.json`. In prod, `npm run build` must run before
-the app starts — templates will raise if `manifest.json` is missing.
-
-Multi-stage `Dockerfile` runs `npm run build` in a Node 20 stage and copies
-only `app/static/dist/` into the Python runtime image; Node deps and source
-do not ship.
-
 ## Development
 
 ```bash
-# Install development dependencies
+# Install all dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
+npm install
+
+# Run frontend build
+npm run build
 
 # Run with auto-reload
 uvicorn app.main:app --reload
