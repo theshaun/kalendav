@@ -72,5 +72,5 @@ this changelog, `git tag v0.1.0`).
 - `003` — `events.timezone` (nullable IANA tz name, falls back to
   `DEFAULT_TIMEZONE` at serialization)
 
-[Unreleased]: https://github.com/theshaun/KalenDAV/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/theshaun/KalenDAV/releases/tag/v0.1.0
+[Unreleased]: https://github.com/theshaun/kalendav/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/theshaun/kalendav/releases/tag/v0.1.0

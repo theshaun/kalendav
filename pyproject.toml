@@ -39,10 +39,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/theshaun/KalenDAV"
-Repository = "https://github.com/theshaun/KalenDAV"
-Issues = "https://github.com/theshaun/KalenDAV/issues"
-Changelog = "https://github.com/theshaun/KalenDAV/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/theshaun/kalendav"
+Repository = "https://github.com/theshaun/kalendav"
+Issues = "https://github.com/theshaun/kalendav/issues"
+Changelog = "https://github.com/theshaun/kalendav/blob/main/CHANGELOG.md"
 
 # ---------------------------------------------------------------------------
 # Hatchling: read version dynamically from app/__init__.py
