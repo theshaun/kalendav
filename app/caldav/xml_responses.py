@@ -101,6 +101,7 @@ def add_calendar_response(
     description: Optional[str] = None,
     color: str = "#3B82F6",
     sync_token: Optional[str] = None,
+    writable: bool = True,
 ) -> etree.Element:
     response = add_response(parent, href)
     prop = add_propstat(response)
@@ -131,6 +132,16 @@ def add_calendar_response(
 
     cal_sync_token = etree.SubElement(prop, f"{D}sync-token")
     cal_sync_token.text = token
+
+    # RFC 3744 §4.3 — current-user-privilege-set tells the client what
+    # operations the authenticated user may perform.  KashCal (and other
+    # strict clients) treats a missing privilege set as read-only.
+    privilege_set = etree.SubElement(prop, f"{D}current-user-privilege-set")
+    for priv in ("read", "read-current-user-privilege-set", "read-acl"):
+        etree.SubElement(privilege_set, f"{D}{priv}")
+    if writable:
+        for priv in ("write", "write-content", "write-properties", "bind", "unbind"):
+            etree.SubElement(privilege_set, f"{D}{priv}")
 
     return response
 

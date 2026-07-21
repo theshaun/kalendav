@@ -1,5 +1,5 @@
 from app import __version__
-from app.config import settings
+from app.config import settings, get_base_uri
 from app.database import init_db
 from app.init_data import create_admin_user
 from fastapi import FastAPI, Request
@@ -68,12 +68,7 @@ async def well_known_caldav(request: Request):
                 "Content-Length": "0",
             },
         )
-    base = settings.base_uri.rstrip("/")
-    if not base or base.endswith("localhost:8000"):
-        fwd_proto = request.headers.get("x-forwarded-proto", "http")
-        fwd_host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
-        if fwd_host:
-            base = f"{fwd_proto}://{fwd_host}"
+    base = get_base_uri(request)
     return Response(
         content=build_well_known_caldav(base),
         media_type="application/xml; charset=utf-8",
