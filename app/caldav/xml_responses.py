@@ -71,7 +71,6 @@ def add_principal_response(parent: etree.Element, href: str, principal_url: str)
     
     resourcetype = etree.SubElement(prop, f"{D}resourcetype")
     etree.SubElement(resourcetype, f"{D}collection")
-    etree.SubElement(resourcetype, f"{C}calendar")
     
     displayname = etree.SubElement(prop, f"{D}displayname")
     displayname.text = "Calendar"
@@ -79,9 +78,13 @@ def add_principal_response(parent: etree.Element, href: str, principal_url: str)
     calendar_color = etree.SubElement(prop, f"{ICAL}calendar-color")
     calendar_color.text = "#3B82F6"
     
-    principal_url_elem = etree.SubElement(prop, f"{D}principal-URL")
-    href_elem = etree.SubElement(principal_url_elem, f"{D}href")
+    current_user_principal = etree.SubElement(prop, f"{D}current-user-principal")
+    href_elem = etree.SubElement(current_user_principal, f"{D}href")
     href_elem.text = principal_url
+    
+    principal_url_elem = etree.SubElement(prop, f"{D}principal-URL")
+    href_elem2 = etree.SubElement(principal_url_elem, f"{D}href")
+    href_elem2.text = principal_url
     
     calendar_home_set = etree.SubElement(prop, f"{C}calendar-home-set")
     href_elem2 = etree.SubElement(calendar_home_set, f"{D}href")
@@ -160,6 +163,19 @@ def add_event_response(
     calendar_data.text = raw_ics
     
     return response
+
+
+def build_well_known_caldav(base_url: str) -> str:
+    """RFC 6764 §3.3 — 207 Multi-Status with calendar-home-set for service discovery."""
+    multistatus = create_multistatus()
+    response = add_response(multistatus, f"{base_url}/dav/")
+    prop = add_propstat(response)
+
+    calendar_home_set = etree.SubElement(prop, f"{C}calendar-home-set")
+    href_elem = etree.SubElement(calendar_home_set, f"{D}href")
+    href_elem.text = f"{base_url}/dav/"
+
+    return xml_to_string(multistatus)
 
 
 def xml_to_string(element: etree.Element) -> str:

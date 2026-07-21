@@ -4,6 +4,7 @@ from app.database import init_db
 from app.init_data import create_admin_user
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, Response
+from app.caldav.xml_responses import build_well_known_caldav
 from fastapi.staticfiles import StaticFiles
 from app.caldav.router import router as caldav_router
 from app.ics_feed.router import router as ics_router
@@ -57,6 +58,7 @@ async def health():
 
 @app.api_route("/.well-known/caldav", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])
 async def well_known_caldav(request: Request):
+    """RFC 6764 §3.3 CalDAV discovery endpoint."""
     if request.method == "OPTIONS":
         return Response(
             status_code=200,
@@ -66,14 +68,18 @@ async def well_known_caldav(request: Request):
                 "Content-Length": "0",
             },
         )
-    # RFC 6764 §3.3: iOS requires an ABSOLUTE Location URL here.
     base = settings.base_uri.rstrip("/")
     if not base or base.endswith("localhost:8000"):
         fwd_proto = request.headers.get("x-forwarded-proto", "http")
         fwd_host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
         if fwd_host:
             base = f"{fwd_proto}://{fwd_host}"
-    return RedirectResponse(url=f"{base}/dav/", status_code=301)
+    return Response(
+        content=build_well_known_caldav(base),
+        media_type="application/xml; charset=utf-8",
+        status_code=207,
+        headers={"DAV": "1, 2, 3, calendar-access, calendar-schedule"},
+    )
 
 
 @app.api_route("/.well-known/carddav", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])
