@@ -18,7 +18,7 @@ from app.auth.session_deps import get_current_user_session, get_current_user_ses
 from app.auth.session import set_session_cookie, clear_session_cookie
 from app.services.event_service import EventService
 from app.caldav.ics_parser import build_rrule, parse_ics_bulk, generate_calendar_ics
-from app.config import settings
+from app.config import settings, get_base_uri
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta, timezone
 import json
@@ -157,7 +157,7 @@ async def admin_dashboard(
             "users_count": len(users),
             "calendars_count": len(calendars),
             "events_count": len(events),
-            "base_uri": settings.base_uri,
+            "base_uri": get_base_uri(request),
         },
     )
 
@@ -644,7 +644,7 @@ async def user_dashboard(
             "calendars_count": len(calendars),
             "api_keys_count": len(api_keys),
             "events_count": events_count,
-            "base_uri": settings.base_uri,
+            "base_uri": get_base_uri(request),
         },
     )
 

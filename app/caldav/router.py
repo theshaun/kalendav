@@ -153,6 +153,11 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
 
         all_calendars = list(owned_calendars) + shared_calendars
 
+        write_share_ids = {s.calendar_id for s in shared if s.permission.value in ("write", "admin")}
+        writable_map = {c.id: True for c in owned_calendars}
+        for c in shared_calendars:
+            writable_map.setdefault(c.id, c.id in write_share_ids)
+
         if depth == "1":
             add_response(multistatus, f"/dav/principals/{user.username}/calendars/")
 
@@ -166,6 +171,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
                 cal.description,
                 cal.color or "#3B82F6",
                 sync_token=compute_sync_token(cal.id, cal.events),
+                writable=writable_map.get(cal.id, True),
             )
     
     elif len(path_parts) >= 2 and path_parts[0] == "principals":
@@ -185,6 +191,10 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
         if not calendar:
             raise HTTPException(status_code=404)
 
+        is_writable = calendar.user_id == user.id or check_calendar_permission(
+            user, calendar, require_write=True
+        )
+
         result = await db.execute(
             select(Event).where(Event.calendar_id == calendar.id)
         )
@@ -198,6 +208,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
             calendar.description,
             calendar.color or "#3B82F6",
             sync_token=compute_sync_token(calendar.id, events_for_token),
+            writable=is_writable,
         )
 
         if depth == "1":
@@ -233,6 +244,11 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
 
         all_calendars = list(owned_calendars) + shared_calendars
 
+        write_share_ids = {s.calendar_id for s in shared if s.permission.value in ("write", "admin")}
+        writable_map = {c.id: True for c in owned_calendars}
+        for c in shared_calendars:
+            writable_map.setdefault(c.id, c.id in write_share_ids)
+
         if depth == "1":
             add_response(multistatus, f"/dav/{user.username}/calendars/")
 
@@ -246,6 +262,7 @@ async def handle_propfind(request: Request, path_parts: list, user: User, db: As
                 cal.description,
                 cal.color or "#3B82F6",
                 sync_token=compute_sync_token(cal.id, cal.events),
+                writable=writable_map.get(cal.id, True),
             )
     
     return FastAPIResponse(

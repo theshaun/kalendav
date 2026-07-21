@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 from zoneinfo import ZoneInfo, available_timezones
+from fastapi import Request
 
 
 def _validate_timezone(v: str) -> str:
@@ -39,3 +40,13 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_base_uri(request: Request) -> str:
+    base = settings.base_uri.rstrip("/")
+    if not base or base.endswith("localhost:8000"):
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        if host:
+            base = f"{proto}://{host}"
+    return base

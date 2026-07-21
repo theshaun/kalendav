@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes yet. Add items here as they land on `main`._
+### Fixed
+- **CalDAV discovery (KashCal)**: `.well-known/caldav` now returns a proper 207
+  Multi-Status response with `calendar-home-set` instead of a 301 redirect.
+  XML generation moved to `xml_responses.build_well_known_caldav()`.
+- **CalDAV discovery (KashCal)**: root `/dav/` PROPFIND now includes
+  `current-user-principal` per RFC 5987, and no longer advertises
+  `<c:calendar/>` in `resourcetype` on non-calendar resources.
+- **CalDAV read-only (KashCal)**: calendar PROPFIND responses now include
+  `current-user-privilege-set` (RFC 3744 §4.3). Writable calendars advertise
+  `write`, `write-content`, `write-properties`, `bind`, `unbind` privileges;
+  read-only shared calendars only advertise `read`. Previously absent, causing
+  strict clients like KashCal to treat all calendars as read-only.
+- **Web calendar (htmx)**: `htmx` is now explicitly assigned to `window.htmx`
+  in `main.js`. The Vite ESM migration loaded htmx as a bare side-effect
+  import which does not set the global, breaking `htmx.ajax()` calls in the
+  calendar template's module scripts (both event editing and creation).
 
 ## [0.1.0] - 2026-07-20
 
