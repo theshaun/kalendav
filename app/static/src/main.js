@@ -10,8 +10,10 @@
 //      calendar.html template contract keeps working until Wave 4 rewrites
 //      it to call initCalendar() instead.
 
-import 'htmx.org';
+import htmx from 'htmx.org';
 import { createIcons, icons } from 'lucide';
+
+window.htmx = htmx;
 
 // Tailwind + design tokens. Imported here so Vite emits a single CSS bundle
 // (cssCodeSplit: false in vite.config.js) keyed off the main entry.
