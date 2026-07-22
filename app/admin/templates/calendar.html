@@ -128,6 +128,9 @@
         const res = await fetch(`/admin/calendar/events?${params.toString()}`);
         if (!res.ok) throw new Error('Failed to load events');
         const events = await res.json();
+        for (const e of events) {
+          e.editable = isCalendarWritable(e.calendarId) && !e.rrule;
+        }
         successCallback(events);
       } catch (e) {
         failureCallback(e);
@@ -172,11 +175,43 @@
         alert('You do not have permission to edit this event.');
       }
     },
+    eventDrop: function (info) {
+      persistEventTiming(info);
+    },
+    eventResize: function (info) {
+      persistEventTiming(info);
+    },
     eventDisplay: 'block',
     displayEventTime: true,
   });
 
   // ---- Page-local modal openers (HTMX contract preserved) -----------------
+
+  async function persistEventTiming(info) {
+    // FullCalendar already updated the local event object; on failure we
+    // call info.revert() to roll the UI back to the stored timing.
+    const eventId = info.event.id;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      const res = await fetch(`/admin/calendar/events/${encodeURIComponent(eventId)}/drop`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start: info.event.startStr,
+          end: info.event.endStr,
+          all_day: info.event.allDay,
+          tz,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      info.revert();
+      alert(`Could not update event: ${e.message}`);
+    }
+  }
 
   function openNewEventModal(date, viewType) {
     let dateParam = '';

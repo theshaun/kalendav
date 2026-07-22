@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Form, UploadFile, File
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response as FastAPIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -1416,6 +1416,71 @@ async def update_event(
     )
     
     return HTMLResponse(content="<script>closeModal(); refreshCalendar();</script>")
+
+
+@router.patch("/calendar/events/{event_id}/drop", response_class=JSONResponse)
+async def drop_event(
+    event_id: int,
+    start: str = Body(...),
+    end: Optional[str] = Body(None),
+    all_day: bool = Body(False),
+    tz: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    """Timing-only update for FullCalendar drag-and-drop / resize.
+
+    Preserves summary, description, location, color, and rrule. Recurring
+    events are marked non-editable client-side (see calendar.html) because
+    moving a single rrule-expanded occurrence would silently mutate the
+    whole series — exception handling is a separate feature.
+    """
+    event_service = EventService(db)
+
+    if not await event_service.can_edit_event(event_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot edit this event")
+
+    # Empty/whitespace tz must collapse to None (see update_event).
+    tz = (tz or "").strip() or None
+    client_tz = ZoneInfo(tz) if tz else timezone.utc
+
+    def _parse_dt(s: Optional[str]) -> Optional[datetime]:
+        if not s:
+            return None
+        try:
+            if "T" in s:
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=client_tz)
+            else:
+                # Date-only string (all-day drop in month view)
+                dt = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=client_tz)
+            return dt
+        except ValueError:
+            return None
+
+    dtstart_dt = _parse_dt(start)
+    if dtstart_dt is None:
+        raise HTTPException(status_code=400, detail="Invalid start")
+
+    dtend_dt = _parse_dt(end)
+    if all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(days=1)
+    elif not all_day and not dtend_dt:
+        dtend_dt = dtstart_dt + timedelta(hours=1)
+
+    dtstart_utc = dtstart_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    dtend_utc = dtend_dt.astimezone(timezone.utc).replace(tzinfo=None) if dtend_dt else None
+
+    await event_service.update_event(
+        event_id=event_id,
+        dtstart=dtstart_utc,
+        dtend=dtend_utc,
+        is_all_day=all_day,
+        timezone=tz,
+    )
+
+    return JSONResponse(content={"ok": True})
 
 
 @router.delete("/calendar/events/{event_id}")
