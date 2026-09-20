@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+
+{% block content %}
+{# Page title ("Tasks", --text-h3) renders in the topbar via the page_title
+   block in _base.html — mirror calendar.html and skip a redundant in-content
+   heading so the operations console opens straight into the add form. #}
+
+{# Add-task card. DESIGN.md §5 card: bg-surface + border-border-default +
+   rounded-lg (no shadow on dark surfaces, §2/§12). HTMX swaps #task-list
+   with the refreshed partial returned by POST /admin/tasks. The `summary`
+   required attr rejects empty submits client-side; FastAPI Form(..., ...)
+   returns 422 if a non-browser caller omits it (no 500). Field names
+   (calendar_id, summary, due, priority) match the T6 route signatures. #}
+<section class="bg-surface border border-border-default rounded-lg p-4 md:p-6 mb-4">
+  <form
+    hx-post="/admin/tasks"
+    hx-target="#task-list"
+    hx-swap="outerHTML"
+    class="flex flex-col gap-3 md:flex-row md:items-end"
+  >
+    <div class="flex-1">
+      <label for="task-summary" class="block text-body-sm font-medium text-text-primary mb-1">
+        Summary
+      </label>
+      <input
+        type="text"
+        name="summary"
+        id="task-summary"
+        required
+        maxlength="500"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm placeholder-text-tertiary focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
+        placeholder="Add a task..."
+      >
+    </div>
+
+    <div class="md:w-44">
+      <label for="task-calendar" class="block text-body-sm font-medium text-text-primary mb-1">
+        Calendar
+      </label>
+      <select
+        name="calendar_id"
+        id="task-calendar"
+        required
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
+      >
+        {% for cal in calendars %}
+        <option value="{{ cal.id }}">{{ cal.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="md:w-40">
+      <label for="task-due" class="block text-body-sm font-medium text-text-primary mb-1">
+        Due <span class="text-text-tertiary font-normal">(optional)</span>
+      </label>
+      <input
+        type="date"
+        name="due"
+        id="task-due"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
+      >
+    </div>
+
+    <div class="md:w-32">
+      <label for="task-priority" class="block text-body-sm font-medium text-text-primary mb-1">
+        Priority <span class="text-text-tertiary font-normal">(optional)</span>
+      </label>
+      <select
+        name="priority"
+        id="task-priority"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
+      >
+        <option value="">—</option>
+        {% for p in range(0, 10) %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button
+      type="submit"
+      class="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 active:scale-[0.98] text-white font-medium text-body-sm transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+    >
+      <i data-lucide="plus" class="h-4 w-4"></i>
+      <span>Add</span>
+    </button>
+  </form>
+
+  {% if not calendars %}
+  <p class="mt-4 text-body-sm text-text-secondary">
+    You have no writable calendars. Create one in <a class="text-accent-600 dark:text-accent-400 hover:underline focus-visible:outline-none focus-visible:shadow-focus rounded-sm" href="/admin/my-calendars">My Calendars</a> first.
+  </p>
+  {% endif %}
+</section>
+
+{% include "partials/_task_list.html" %}
+{% endblock %}
+
+{% block scripts %}
+{# Native HTML5 drag-reorder. NO new deps (htmx + lucide already present).
+   Listeners attach to `document` (not #task-list) so they survive the
+   outerHTML swaps that POST/toggle/delete perform on #task-list. On drop we
+   read the live DOM order of [data-task-id] and POST it to
+   /admin/tasks/reorder; on failure we reload the page to revert to the
+   persisted sort_order. Visual feedback is opacity-only (instant, no
+   transition) so prefers-reduced-motion users see no motion. #}
+<script type="module">
+  (function wireTaskDragReorder() {
+    var draggedRow = null;
+
+    function taskRow(target) {
+      var list = document.getElementById('task-list');
+      if (!list || !list.contains(target)) return null;
+      return target.closest ? target.closest('[data-task-id]') : null;
+    }
+
+    document.addEventListener('dragstart', function (e) {
+      var row = taskRow(e.target);
+      if (!row) return;
+      draggedRow = row;
+      try { e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+      row.classList.add('opacity-50');
+    });
+
+    document.addEventListener('dragend', function (e) {
+      var row = taskRow(e.target);
+      if (row) row.classList.remove('opacity-50');
+      draggedRow = null;
+    });
+
+    document.addEventListener('dragover', function (e) {
+      if (!draggedRow) return;
+      var list = document.getElementById('task-list');
+      if (!list) return;
+      var target = taskRow(e.target);
+      if (!target || target === draggedRow) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      var rect = target.getBoundingClientRect();
+      var after = (e.clientY - rect.top) > rect.height / 2;
+      if (after) {
+        if (target.nextSibling !== draggedRow) list.insertBefore(draggedRow, target.nextSibling);
+      } else {
+        if (target !== draggedRow.nextSibling) list.insertBefore(draggedRow, target);
+      }
+    });
+
+    document.addEventListener('drop', async function (e) {
+      if (!draggedRow) return;
+      var list = document.getElementById('task-list');
+      if (!list) return;
+      e.preventDefault();
+      var ids = Array.from(list.querySelectorAll('[data-task-id]'))
+        .map(function (r) { return r.getAttribute('data-task-id'); });
+      draggedRow = null;
+      try {
+        var res = await fetch('/admin/tasks/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: ids }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+      } catch (err) {
+        // Revert to persisted order on any failure.
+        window.location.reload();
+      }
+    });
+  })();
+</script>
+{% endblock %}
