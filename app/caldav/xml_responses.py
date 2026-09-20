@@ -121,8 +121,10 @@ def add_calendar_response(
     calendar_color.text = color
 
     supported_calendar_component = etree.SubElement(prop, f"{C}supported-calendar-component-set")
-    comp = etree.SubElement(supported_calendar_component, f"{C}comp")
-    comp.set("name", "VEVENT")
+    comp_event = etree.SubElement(supported_calendar_component, f"{C}comp")
+    comp_event.set("name", "VEVENT")
+    comp_todo = etree.SubElement(supported_calendar_component, f"{C}comp")
+    comp_todo.set("name", "VTODO")
 
     # getctag and sync-token must stay in sync: clients compare getctag (or
     # sync-token) between polls to decide whether to re-sync.

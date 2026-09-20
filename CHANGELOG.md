@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Task (VTODO) support**: CalDAV tasks now sync end-to-end alongside
+  events. A new `tasks` table (alembic `005`) mirrors the VTODO component
+  (uid, summary, status, priority, due, completed, percent_complete,
+  sort_order, raw_ics) scoped per calendar with the same `(calendar_id, uid)`
+  uniqueness contract events use. Calendars advertise `VTODO` in
+  `supported-calendar-component-set`; PUT/GET/DELETE and PROPFIND Depth:1
+  handle VTODO resources; a `calendar-query` REPORT honors the VTODO
+  `comp-filter` plus the canonical pending-todos prop-filter. Web manual
+  ordering (`sort_order`) is stored locally and does not propagate to
+  calendar clients (RFC 4791 has no notion of ordering).
+- **Web task manager**: new Tasks page at `/admin/tasks` (sidebar entry for
+  both admin and user roles) listing tasks across all owned and writable-
+  shared calendars. Add (summary + calendar + optional due/priority),
+  toggle complete, delete, and drag-to-reorder via native HTML5 drag-and-
+  drop (no new frontend dependencies). Styled strictly with the locked
+  DESIGN.md token system.
+
 ### Fixed
 - **CalDAV discovery (KashCal)**: `.well-known/caldav` now returns a proper 207
   Multi-Status response with `calendar-home-set` instead of a 301 redirect.

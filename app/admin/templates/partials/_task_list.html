@@ -1,0 +1,65 @@
+{# Shared <ul id="task-list">. Rendered both by tasks.html (initial paint) and by
+   every POST/DELETE mutation handler as the HTMX swap target, so the markup
+   contract is identical on first paint and after each swap. Border-only depth
+   treatment per DESIGN.md §2/§12 (no shadow on dark surfaces). #}
+<ul id="task-list" class="bg-surface rounded-lg border border-border-default divide-y divide-border-subtle overflow-hidden">
+  {% for t in tasks %}
+  <li
+    class="task-row flex items-center gap-3 px-4 py-3 transition-colors duration-instant ease-out hover:bg-hover focus-within:bg-hover{% if t.status == 'COMPLETED' %} opacity-60{% endif %}"
+    data-task-id="{{ t.id }}"
+    draggable="true"
+  >
+    <form
+      hx-post="/admin/tasks/{{ t.id }}/toggle"
+      hx-target="#task-list"
+      hx-swap="outerHTML"
+      class="inline"
+    >
+      <input
+        type="checkbox"
+        {% if t.status == "COMPLETED" %}checked{% endif %}
+        onchange="this.form.requestSubmit()"
+        class="h-4 w-4 rounded border-border-input text-accent-600 dark:text-accent-400 focus-visible:shadow-focus focus-visible:outline-none cursor-pointer"
+        aria-label="Toggle complete for {{ t.summary or 'task' }}"
+      >
+    </form>
+
+    <span class="flex-1 min-w-0 truncate text-body-sm {% if t.status == 'COMPLETED' %}line-through text-text-tertiary{% else %}text-text-primary{% endif %}">
+      {{ t.summary or '(no summary)' }}
+    </span>
+
+    {% if t.due %}
+    <span class="hidden sm:inline-flex items-center gap-1 text-label text-text-tertiary tabular-nums shrink-0">
+      <i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i>
+      {{ t.due.strftime('%Y-%m-%d') }}
+    </span>
+    {% endif %}
+
+    {% if t.priority is not none %}
+    <span class="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 h-5 rounded-full bg-elevated text-label text-text-secondary tabular-nums shrink-0" title="Priority">
+      {{ t.priority }}
+    </span>
+    {% endif %}
+
+    <button
+      type="button"
+      hx-delete="/admin/tasks/{{ t.id }}"
+      hx-target="#task-list"
+      hx-swap="outerHTML"
+      hx-confirm="Delete this task?"
+      class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-tertiary hover:text-danger hover:bg-danger-bg active:scale-[0.98] transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none shrink-0"
+      aria-label="Delete task {{ t.summary or '' }}"
+    >
+      <i data-lucide="trash-2" class="h-4 w-4"></i>
+    </button>
+  </li>
+  {% else %}
+  {# Empty state per DESIGN.md §5: Lucide icon 32px in text-text-tertiary,
+     headline text-h3, body text-body-sm in text-text-secondary. #}
+  <li class="flex flex-col items-center justify-center text-center px-6 py-12 gap-2">
+    <i data-lucide="list-todo" class="h-8 w-8 text-text-tertiary" aria-hidden="true"></i>
+    <p class="text-h3 text-text-primary">No tasks yet</p>
+    <p class="text-body-sm text-text-secondary">Add your first task using the form above.</p>
+  </li>
+  {% endfor %}
+</ul>

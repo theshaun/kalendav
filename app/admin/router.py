@@ -17,6 +17,7 @@ from app.auth.basic import generate_api_key, hash_api_key
 from app.auth.session_deps import get_current_user_session, get_current_user_session_optional
 from app.auth.session import set_session_cookie, clear_session_cookie
 from app.services.event_service import EventService
+from app.services.task_service import TaskService
 from app.caldav.ics_parser import build_rrule, parse_ics_bulk, generate_calendar_ics
 from app.config import settings, get_base_uri
 from fastapi.templating import Jinja2Templates
@@ -83,6 +84,28 @@ def _event_zone(event) -> ZoneInfo:
         return ZoneInfo(tz_name)
     except Exception:
         return settings.tz
+
+
+def _parse_form_dt(value: Optional[str], client_tz, all_day: bool) -> Optional[datetime]:
+    """Form datetime string -> naive UTC.
+
+    All-day events store the wall date at UTC midnight: an RFC 5545 DATE has
+    no timezone, so any tz shift would move it off the day the user picked.
+    """
+    if not value:
+        return None
+    try:
+        if all_day:
+            return datetime.strptime(value.split("T")[0], "%Y-%m-%d")
+        if "T" in value:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=client_tz)
+        else:
+            dt = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=client_tz)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 def check_admin(user: User):
@@ -1249,36 +1272,18 @@ async def create_event(
     tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
     
-    try:
-        if "T" in dtstart:
-            dtstart_dt = datetime.fromisoformat(dtstart.replace("Z", "+00:00"))
-            if dtstart_dt.tzinfo is None:
-                dtstart_dt = dtstart_dt.replace(tzinfo=client_tz)
-        else:
-            dtstart_dt = datetime.strptime(dtstart, "%Y-%m-%d").replace(tzinfo=client_tz)
-    except ValueError:
-        dtstart_dt = datetime.now(client_tz)
-    
-    dtstart_utc = dtstart_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    
-    dtend_dt = None
-    if dtend:
-        try:
-            if "T" in dtend:
-                dtend_dt = datetime.fromisoformat(dtend.replace("Z", "+00:00"))
-                if dtend_dt.tzinfo is None:
-                    dtend_dt = dtend_dt.replace(tzinfo=client_tz)
-            else:
-                dtend_dt = datetime.strptime(dtend, "%Y-%m-%d").replace(tzinfo=client_tz)
-        except ValueError:
-            dtend_dt = None
-    
-    if is_all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(days=1)
-    elif not is_all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(hours=1)
-    
-    dtend_utc = dtend_dt.astimezone(timezone.utc).replace(tzinfo=None) if dtend_dt else None
+    dtstart_utc = _parse_form_dt(dtstart, client_tz, is_all_day)
+    if dtstart_utc is None:
+        fallback = datetime.now(client_tz)
+        dtstart_utc = (
+            datetime.combine(fallback.date(), datetime.min.time())
+            if is_all_day
+            else fallback.astimezone(timezone.utc).replace(tzinfo=None)
+        )
+
+    dtend_utc = _parse_form_dt(dtend, client_tz, is_all_day)
+    if dtend_utc is None:
+        dtend_utc = dtstart_utc + (timedelta(days=1) if is_all_day else timedelta(hours=1))
     
     rrule = None
     until_dt = None
@@ -1348,36 +1353,18 @@ async def update_event(
     tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
     
-    try:
-        if "T" in dtstart:
-            dtstart_dt = datetime.fromisoformat(dtstart.replace("Z", "+00:00"))
-            if dtstart_dt.tzinfo is None:
-                dtstart_dt = dtstart_dt.replace(tzinfo=client_tz)
-        else:
-            dtstart_dt = datetime.strptime(dtstart, "%Y-%m-%d").replace(tzinfo=client_tz)
-    except ValueError:
-        dtstart_dt = datetime.now(client_tz)
-    
-    dtstart_utc = dtstart_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    
-    dtend_dt = None
-    if dtend:
-        try:
-            if "T" in dtend:
-                dtend_dt = datetime.fromisoformat(dtend.replace("Z", "+00:00"))
-                if dtend_dt.tzinfo is None:
-                    dtend_dt = dtend_dt.replace(tzinfo=client_tz)
-            else:
-                dtend_dt = datetime.strptime(dtend, "%Y-%m-%d").replace(tzinfo=client_tz)
-        except ValueError:
-            dtend_dt = None
-    
-    if is_all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(days=1)
-    elif not is_all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(hours=1)
-    
-    dtend_utc = dtend_dt.astimezone(timezone.utc).replace(tzinfo=None) if dtend_dt else None
+    dtstart_utc = _parse_form_dt(dtstart, client_tz, is_all_day)
+    if dtstart_utc is None:
+        fallback = datetime.now(client_tz)
+        dtstart_utc = (
+            datetime.combine(fallback.date(), datetime.min.time())
+            if is_all_day
+            else fallback.astimezone(timezone.utc).replace(tzinfo=None)
+        )
+
+    dtend_utc = _parse_form_dt(dtend, client_tz, is_all_day)
+    if dtend_utc is None:
+        dtend_utc = dtstart_utc + (timedelta(days=1) if is_all_day else timedelta(hours=1))
     
     rrule = None
     until_dt = None
@@ -1444,33 +1431,13 @@ async def drop_event(
     tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
 
-    def _parse_dt(s: Optional[str]) -> Optional[datetime]:
-        if not s:
-            return None
-        try:
-            if "T" in s:
-                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=client_tz)
-            else:
-                # Date-only string (all-day drop in month view)
-                dt = datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=client_tz)
-            return dt
-        except ValueError:
-            return None
-
-    dtstart_dt = _parse_dt(start)
-    if dtstart_dt is None:
+    dtstart_utc = _parse_form_dt(start, client_tz, all_day)
+    if dtstart_utc is None:
         raise HTTPException(status_code=400, detail="Invalid start")
 
-    dtend_dt = _parse_dt(end)
-    if all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(days=1)
-    elif not all_day and not dtend_dt:
-        dtend_dt = dtstart_dt + timedelta(hours=1)
-
-    dtstart_utc = dtstart_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    dtend_utc = dtend_dt.astimezone(timezone.utc).replace(tzinfo=None) if dtend_dt else None
+    dtend_utc = _parse_form_dt(end, client_tz, all_day)
+    if dtend_utc is None:
+        dtend_utc = dtstart_utc + (timedelta(days=1) if all_day else timedelta(hours=1))
 
     await event_service.update_event(
         event_id=event_id,
@@ -1597,3 +1564,149 @@ async def import_ics(
         <p>Successfully imported {count} event{"s" if count != 1 else ""}.</p>
     </div>
     <script>closeModal(); refreshCalendar();</script>''')
+
+
+# Tasks (VTODO). Per-user; login-gated, plus writable-calendar check on mutations.
+
+
+def _parse_task_due(due: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO date/datetime form value into a naive UTC datetime.
+
+    Tolerates None / empty string (returns None). Date-only inputs are
+    interpreted as 00:00 UTC. Anything unparseable collapses to None rather
+    than 500 — the form's `due` field is optional.
+    """
+    if not due:
+        return None
+    try:
+        text = due.strip().replace("Z", "+00:00")
+        if "T" in text:
+            dt = datetime.fromisoformat(text)
+        else:
+            dt = datetime.strptime(text, "%Y-%m-%d")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
+async def _render_task_list(db: AsyncSession, user: User, request: Request) -> HTMLResponse:
+    """Re-query the user's tasks and render the shared partial.
+
+    Used as the HTMX swap target after every mutation so the rendered list
+    reflects the persisted state.
+    """
+    task_service = TaskService(db)
+    tasks = await task_service.get_tasks_for_user(user.id)
+    return templates.TemplateResponse(
+        "partials/_task_list.html",
+        {"request": request, "user": user, "tasks": tasks},
+    )
+
+
+@router.get("/tasks", response_class=HTMLResponse)
+async def task_manager(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    task_service = TaskService(db)
+    tasks = await task_service.get_tasks_for_user(user.id)
+
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    result = await db.execute(select(Calendar).where(Calendar.id.in_(writable_ids)))
+    writable_calendars = list(result.scalars().all())
+
+    return templates.TemplateResponse(
+        "tasks.html",
+        {
+            "request": request,
+            "user": user,
+            "tasks": tasks,
+            "calendars": writable_calendars,
+            "writable_calendar_ids": writable_ids,
+        },
+    )
+
+
+@router.post("/tasks", response_class=HTMLResponse)
+async def create_task(
+    request: Request,
+    calendar_id: int = Form(...),
+    summary: str = Form(...),
+    due: Optional[str] = Form(None),
+    priority: Optional[int] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    event_service = EventService(db)
+    writable_ids = await event_service.get_writable_calendars(user.id)
+    if calendar_id not in writable_ids:
+        raise HTTPException(status_code=403, detail="Cannot create task in this calendar")
+
+    task_service = TaskService(db)
+    await task_service.create_task(
+        calendar_id=calendar_id,
+        summary=summary,
+        due=_parse_task_due(due),
+        priority=priority,
+    )
+
+    response = await _render_task_list(db, user, request)
+    response.headers["HX-Trigger"] = "taskCreated"
+    return response
+
+
+@router.post("/tasks/{task_id}/toggle", response_class=HTMLResponse)
+async def toggle_task(
+    task_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    task_service = TaskService(db)
+    if not await task_service.can_edit_task(task_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot edit this task")
+    await task_service.toggle(task_id)
+    return await _render_task_list(db, user, request)
+
+
+@router.delete("/tasks/{task_id}", response_class=HTMLResponse)
+async def delete_task(
+    task_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    task_service = TaskService(db)
+    if not await task_service.can_edit_task(task_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot delete this task")
+    await task_service.delete(task_id)
+    return await _render_task_list(db, user, request)
+
+
+@router.post("/tasks/reorder", response_class=JSONResponse)
+async def reorder_tasks(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    raw_ids = payload.get("ids") if isinstance(payload, dict) else None
+    if not isinstance(raw_ids, list):
+        raise HTTPException(status_code=400, detail="ids must be a list")
+    # Defensive: tolerate non-int elements by skipping them rather than 500.
+    ids: list[int] = []
+    for value in raw_ids:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    task_service = TaskService(db)
+    for task_id in ids:
+        if not await task_service.can_edit_task(task_id, user.id):
+            raise HTTPException(status_code=403, detail="Cannot reorder one or more tasks")
+    await task_service.reorder(ids)
+    return JSONResponse(content={"ok": True})
