@@ -13,13 +13,16 @@ from icalendar import Calendar
 from app.caldav.ics_parser import (
     build_rrule,
     convert_utc_to_tz,
+    detect_component,
     ensure_utc_naive,
     extract_tzid,
     generate_calendar_ics,
     generate_ics,
+    generate_vtodo,
     parse_ics,
     parse_ics_bulk,
     parse_rrule_string,
+    parse_vtodo,
 )
 from app.config import settings
 
@@ -71,7 +74,7 @@ END:VCALENDAR
 
 
 def test_parse_ics_full_event():
-    uid, summary, description, dtstart, dtend, location, rrule, color, tzid = parse_ics(FULL_EVENT_ICS)
+    uid, summary, description, dtstart, dtend, location, rrule, color, tzid, is_all_day = parse_ics(FULL_EVENT_ICS)
     assert uid == "event-123@test"
     assert summary == "Team Meeting"
     assert description == "Weekly sync"
@@ -85,6 +88,7 @@ def test_parse_ics_full_event():
     assert color == "#FF0000"
     # FULL_EVENT_ICS uses DTSTART:...Z so the original TZ is UTC.
     assert tzid == "UTC"
+    assert is_all_day is False
 
 
 def test_parse_ics_all_day_date_combined_to_midnight():
@@ -98,12 +102,13 @@ DTSTART;VALUE=DATE:20260101
 END:VEVENT
 END:VCALENDAR
 """
-    uid, summary, description, dtstart, dtend, location, rrule, color, tzid = parse_ics(ics)
+    uid, summary, description, dtstart, dtend, location, rrule, color, tzid, is_all_day = parse_ics(ics)
     assert uid == "allday@test"
     assert summary == "Holiday"
     # all-day date is combined to midnight datetime
     assert dtstart == datetime(2026, 1, 1, 0, 0, 0)
     assert dtend is None
+    assert is_all_day is True
     assert description is None
     assert location is None
     assert rrule is None
@@ -121,7 +126,7 @@ END:VEVENT
 END:VCALENDAR
 """
     before = datetime.utcnow()
-    _, _, _, dtstart, _, _, _, _, _ = parse_ics(ics)
+    _, _, _, dtstart, _, _, _, _, _, _ = parse_ics(ics)
     after = datetime.utcnow()
     assert before <= dtstart <= after
 
@@ -178,7 +183,7 @@ RRULE:FREQ=DAILY;INTERVAL=2
 END:VEVENT
 END:VCALENDAR
 """
-    *_, rrule, _, _ = parse_ics(ics)
+    *_, rrule, _, _, _ = parse_ics(ics)
     assert rrule.startswith("vRecur(")
     assert "DAILY" in rrule
 
@@ -397,10 +402,10 @@ DTEND;TZID=America/New_York:20260101T110000
 END:VEVENT
 END:VCALENDAR
 """
-    *_, tzid = parse_ics(ics)
+    *_, tzid, _ = parse_ics(ics)
     assert tzid == "America/New_York"
     # DTSTART was 10:00 EST = 15:00 UTC; parse_ics returns naive UTC.
-    _, _, _, dtstart, dtend, _, _, _, _ = parse_ics(ics)
+    _, _, _, dtstart, dtend, _, _, _, _, _ = parse_ics(ics)
     assert dtstart == datetime(2026, 1, 1, 15, 0, 0)
     assert dtend == datetime(2026, 1, 1, 16, 0, 0)
 
@@ -423,10 +428,19 @@ def test_generate_ics_all_day_uses_vdate(tz_utc):
     dtstart = datetime(2026, 1, 1, 0, 0, 0)
     dtend = datetime(2026, 1, 2, 0, 0, 0)
     out = generate_ics(uid="u2", summary="AD", dtstart=dtstart, dtend=dtend, is_all_day=True)
+    # RFC 5545 §3.3.4: DATE value type must be explicit, and no TZID may appear.
+    assert "DTSTART;VALUE=DATE:20260101" in out
+    assert "DTEND;VALUE=DATE:20260102" in out
     cal = Calendar.from_ical(out)
     ev = list(cal.walk("VEVENT"))[0]
     assert ev.get("dtstart").dt == date(2026, 1, 1)
     assert ev.get("dtend").dt == date(2026, 1, 2)
+
+
+def test_generate_ics_all_day_defaults_dtend_to_next_day(tz_utc):
+    out = generate_ics(uid="u2b", summary="AD", dtstart=datetime(2026, 1, 1), is_all_day=True)
+    assert "DTSTART;VALUE=DATE:20260101" in out
+    assert "DTEND;VALUE=DATE:20260102" in out
 
 
 def test_generate_ics_includes_optional_fields(tz_utc):
@@ -450,7 +464,7 @@ def test_generate_ics_round_trip_with_parse_ics(tz_utc):
         uid="rt@test", summary="Round Trip", dtstart=dtstart, dtend=dtend,
         description="D", location="L",
     )
-    uid, summary, description, parsed_start, parsed_end, location, _, _, _ = parse_ics(out)
+    uid, summary, description, parsed_start, parsed_end, location, _, _, _, _ = parse_ics(out)
     assert uid == "rt@test"
     assert summary == "Round Trip"
     assert description == "D"
@@ -562,7 +576,8 @@ def test_build_rrule_count_takes_precedence_over_until():
 class _FakeEvent:
     """Minimal stand-in matching the attributes generate_calendar_ics reads."""
     def __init__(self, uid, dtstart, dtend=None, summary=None, description=None,
-                 location=None, rrule=None, color=None, timezone=None):
+                 location=None, rrule=None, color=None, timezone=None,
+                 is_all_day=False):
         self.uid = uid
         self.dtstart = dtstart
         self.dtend = dtend
@@ -572,6 +587,7 @@ class _FakeEvent:
         self.rrule = rrule
         self.color = color
         self.timezone = timezone
+        self.is_all_day = is_all_day
 
 
 def test_generate_calendar_ics_includes_all_events_and_calname(tz_utc):
@@ -639,6 +655,22 @@ def test_generate_calendar_ics_legacy_event_no_timezone_uses_default(tz_utc):
     assert "DTSTART:20260101T100000Z" in out
 
 
+def test_generate_calendar_ics_all_day_midnight_utc_not_shifted(monkeypatch):
+    # All-day storage convention: wall date at UTC midnight. A non-UTC server
+    # default must NOT shift the date (regression: emitted 20260919 for an
+    # event created on 2026-09-20 in Australia/Brisbane).
+    monkeypatch.setattr(settings, "default_timezone", "Australia/Brisbane")
+    e = _FakeEvent(
+        "ad-shift@test", datetime(2026, 9, 20, 0, 0, 0),
+        dtend=datetime(2026, 9, 23, 0, 0, 0), summary="Trip",
+        timezone="Australia/Brisbane", is_all_day=True,
+    )
+    out = generate_calendar_ics([e])
+    assert "DTSTART;VALUE=DATE:20260920" in out
+    assert "DTEND;VALUE=DATE:20260923" in out
+    assert "T100000" not in out
+
+
 # ---------- extra branch coverage ----------
 
 def test_parse_ics_all_day_with_dtend_combined():
@@ -654,7 +686,7 @@ DTEND;VALUE=DATE:20260103
 END:VEVENT
 END:VCALENDAR
 """
-    _, _, _, dtstart, dtend, _, _, _, _ = parse_ics(ics)
+    _, _, _, dtstart, dtend, _, _, _, _, _ = parse_ics(ics)
     assert dtstart == datetime(2026, 1, 1, 0, 0, 0)
     assert dtend == datetime(2026, 1, 3, 0, 0, 0)
 
@@ -726,3 +758,256 @@ def test_generate_calendar_ics_includes_event_rrule(tz_utc):
     cal = Calendar.from_ical(out)
     ev = list(cal.walk("VEVENT"))[0]
     assert ev.get("rrule") is not None
+
+
+# ---------- parse_vtodo / generate_vtodo / detect_component ----------
+
+FULL_VTODO_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:todo-1@test
+SUMMARY:Submit report
+DESCRIPTION:Quarterly financials
+STATUS:IN-PROCESS
+PRIORITY:5
+PERCENT-COMPLETE:50
+DUE:20260201T170000Z
+END:VTODO
+END:VCALENDAR
+"""
+
+
+def test_parse_vtodo_fields(tz_utc):
+    result = parse_vtodo(FULL_VTODO_ICS)
+    assert result["uid"] == "todo-1@test"
+    assert result["summary"] == "Submit report"
+    assert result["description"] == "Quarterly financials"
+    assert result["status"] == "IN-PROCESS"
+    assert result["priority"] == 5
+    assert result["percent_complete"] == 50
+    assert result["due"] == datetime(2026, 2, 1, 17, 0, 0)
+
+
+def test_parse_vtodo_status_uppercased_and_defaulted(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:t-2@test
+SUMMARY:Lower status
+STATUS:needs-action
+END:VTODO
+END:VCALENDAR
+"""
+    result = parse_vtodo(ics)
+    assert result["status"] == "NEEDS-ACTION"
+
+
+def test_parse_vtodo_status_default_when_missing(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:t-3@test
+SUMMARY:No status
+END:VTODO
+END:VCALENDAR
+"""
+    assert parse_vtodo(ics)["status"] == "NEEDS-ACTION"
+
+
+def test_parse_vtodo_priority_invalid_returns_none(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:t-4@test
+SUMMARY:Bad prio
+PRIORITY:high
+END:VTODO
+END:VCALENDAR
+"""
+    # icalendar drops a non-integer PRIORITY entirely instead of preserving it.
+    result = parse_vtodo(ics)
+    assert result["priority"] is None
+
+
+def test_parse_vtodo_completed_decoded(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:t-5@test
+SUMMARY:Done
+STATUS:COMPLETED
+COMPLETED:20260115T120000Z
+END:VTODO
+END:VCALENDAR
+"""
+    assert parse_vtodo(ics)["completed"] == datetime(2026, 1, 15, 12, 0, 0)
+
+
+def test_parse_vtodo_due_date_only_combined_to_midnight(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:t-6@test
+SUMMARY:All-day due
+DUE;VALUE=DATE:20260301
+END:VTODO
+END:VCALENDAR
+"""
+    assert parse_vtodo(ics)["due"] == datetime(2026, 3, 1, 0, 0, 0)
+
+
+def test_parse_vtodo_missing_uid_generates_uuid(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+SUMMARY:No uid
+END:VTODO
+END:VCALENDAR
+"""
+    uid = parse_vtodo(ics)["uid"]
+    assert uid is not None
+    assert str(uuid.UUID(uid)) == uid
+
+
+def test_parse_vtodo_empty_returns_none_uid(tz_utc):
+    result = parse_vtodo(FULL_EVENT_ICS)
+    assert result["uid"] is None
+    assert result["summary"] is None
+    assert result["status"] is None
+
+
+def test_parse_vtodo_garbage_returns_none_uid(tz_utc):
+    result = parse_vtodo("this is not icalendar")
+    assert result["uid"] is None
+    assert result["status"] is None
+
+
+def test_parse_vtodo_empty_string_returns_none_uid(tz_utc):
+    result = parse_vtodo("")
+    assert result["uid"] is None
+
+
+def test_generate_vtodo_minimal(tz_utc):
+    out = generate_vtodo(uid="x", summary="buy milk")
+    cal = Calendar.from_ical(out)
+    todos = list(cal.walk("VTODO"))
+    assert len(todos) == 1
+    todo = todos[0]
+    assert str(todo.get("uid")) == "x"
+    assert str(todo.get("summary")) == "buy milk"
+    assert todo.get("dtstamp") is not None
+    assert "BEGIN:VTODO" in out
+    assert "END:VTODO" in out
+
+
+def test_generate_vtodo_includes_optional_fields(tz_utc):
+    out = generate_vtodo(
+        uid="opt@test", summary="S", description="D", priority=7,
+        percent_complete=30, status="in-process",
+        due=datetime(2026, 5, 1, 12, 0, 0),
+        completed=datetime(2026, 4, 1, 9, 0, 0),
+    )
+    cal = Calendar.from_ical(out)
+    todo = list(cal.walk("VTODO"))[0]
+    assert str(todo.get("description")) == "D"
+    assert int(todo.get("priority")) == 7
+    assert int(todo.get("percent-complete")) == 30
+    assert str(todo.get("status")) == "IN-PROCESS"
+    assert todo.get("due") is not None
+    assert todo.get("completed") is not None
+
+
+def test_generate_vtodo_status_always_emitted(tz_utc):
+    out = generate_vtodo(uid="s@test", summary="S")
+    cal = Calendar.from_ical(out)
+    todo = list(cal.walk("VTODO"))[0]
+    assert str(todo.get("status")) == "NEEDS-ACTION"
+
+
+def test_generate_vtodo_default_status(tz_utc):
+    out = generate_vtodo(uid="d@test", summary="S")
+    assert "STATUS:NEEDS-ACTION" in out
+
+
+def test_generate_vtodo_x_wr_timezone_header(tz_utc):
+    out = generate_vtodo(uid="h@test", summary="S")
+    assert "X-WR-TIMEZONE:UTC" in out
+
+
+def test_generate_vtodo_explicit_timezone_overrides_default(monkeypatch):
+    monkeypatch.setattr(settings, "default_timezone", "UTC")
+    out = generate_vtodo(
+        uid="tz@test", summary="S",
+        due=datetime(2026, 1, 1, 10, 0, 0),
+        timezone="Australia/Brisbane",
+    )
+    assert "X-WR-TIMEZONE:Australia/Brisbane" in out
+    # 10:00 UTC -> 20:00 Brisbane
+    assert "DUE;TZID=Australia/Brisbane:20260101T200000" in out
+
+
+def test_roundtrip_vtodo_all_fields(tz_utc):
+    out = generate_vtodo(
+        uid="u1", summary="t", status="COMPLETED",
+        priority=3, percent_complete=100,
+    )
+    parsed = parse_vtodo(out)
+    assert parsed["summary"] == "t"
+    assert parsed["status"] == "COMPLETED"
+    assert parsed["priority"] == 3
+    assert parsed["percent_complete"] == 100
+    assert parsed["uid"] == "u1"
+
+
+def test_roundtrip_vtodo_with_due_and_completed(tz_utc):
+    out = generate_vtodo(
+        uid="u2", summary="task with times",
+        status="COMPLETED",
+        due=datetime(2026, 6, 1, 10, 0, 0),
+        completed=datetime(2026, 5, 15, 12, 0, 0),
+        percent_complete=100,
+    )
+    parsed = parse_vtodo(out)
+    assert parsed["due"] == datetime(2026, 6, 1, 10, 0, 0)
+    assert parsed["completed"] == datetime(2026, 5, 15, 12, 0, 0)
+
+
+def test_detect_component_vevent(tz_utc):
+    assert detect_component(FULL_EVENT_ICS) == "VEVENT"
+
+
+def test_detect_component_vtodo(tz_utc):
+    assert detect_component(FULL_VTODO_ICS) == "VTODO"
+
+
+def test_detect_component_garbage_returns_empty(tz_utc):
+    assert detect_component("not icalendar") == ""
+
+
+def test_detect_component_empty_string_returns_empty(tz_utc):
+    assert detect_component("") == ""
+
+
+def test_detect_component_vtodo_takes_precedence(tz_utc):
+    ics = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VEVENT
+UID:e@test
+SUMMARY:E
+DTSTART:20260101T100000Z
+END:VEVENT
+BEGIN:VTODO
+UID:t@test
+SUMMARY:T
+END:VTODO
+END:VCALENDAR
+"""
+    assert detect_component(ics) == "VTODO"

@@ -311,3 +311,155 @@ async def test_get_events_for_user_no_calendars_returns_empty(db_session):
     user = await make_user(db_session, username="lone")
     svc = EventService(db_session)
     assert await svc.get_events_for_user(user.id) == []
+
+
+# ---------- TaskService ----------
+
+from app.models.task import TaskStatus  # noqa: E402
+from app.services.task_service import TaskService  # noqa: E402
+from tests.conftest import make_task  # noqa: E402
+
+
+class TestTaskService:
+    @pytest.mark.asyncio
+    async def test_create_and_get_by_uid(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        svc = TaskService(db_session)
+        created = await svc.create_task(cal.id, summary="Buy milk")
+        assert created.uid
+        fetched = await svc.get_by_uid(cal.id, created.uid)
+        assert fetched is not None
+        assert fetched.id == created.id
+        assert fetched.summary == "Buy milk"
+
+    @pytest.mark.asyncio
+    async def test_create_task_with_explicit_uid(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        svc = TaskService(db_session)
+        created = await svc.create_task(cal.id, summary="X", uid="explicit-uid-123")
+        assert created.uid == "explicit-uid-123"
+
+    @pytest.mark.asyncio
+    async def test_get_by_calendar_ordered(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        t2 = await make_task(db_session, cal.id, summary="t2", sort_order=2)
+        t0 = await make_task(db_session, cal.id, summary="t0", sort_order=0)
+        t1 = await make_task(db_session, cal.id, summary="t1", sort_order=1)
+        svc = TaskService(db_session)
+        ordered = await svc.get_by_calendar(cal.id)
+        assert [t.id for t in ordered] == [t0.id, t1.id, t2.id]
+
+    @pytest.mark.asyncio
+    async def test_create_task_appends_sort_order(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        svc = TaskService(db_session)
+        first = await svc.create_task(cal.id, summary="first")
+        second = await svc.create_task(cal.id, summary="second")
+        assert first.sort_order == 0
+        assert second.sort_order == 1
+
+    @pytest.mark.asyncio
+    async def test_toggle_consistency(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        svc = TaskService(db_session)
+        created = await svc.create_task(
+            cal.id, summary="do thing", status=TaskStatus.NEEDS_ACTION
+        )
+
+        completed = await svc.toggle(created.id)
+        assert completed is not None
+        assert completed.status == "COMPLETED"
+        assert completed.completed is not None
+        assert completed.percent_complete == 100
+        assert "STATUS:COMPLETED" in completed.raw_ics
+
+        reopened = await svc.toggle(created.id)
+        assert reopened is not None
+        assert reopened.status == "NEEDS-ACTION"
+        assert reopened.completed is None
+        assert reopened.percent_complete is None
+        assert "STATUS:NEEDS-ACTION" in reopened.raw_ics
+
+    @pytest.mark.asyncio
+    async def test_reorder(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        t1 = await make_task(db_session, cal.id, summary="t1", sort_order=0)
+        t2 = await make_task(db_session, cal.id, summary="t2", sort_order=1)
+        t3 = await make_task(db_session, cal.id, summary="t3", sort_order=2)
+        svc = TaskService(db_session)
+
+        await svc.reorder([t3.id, t1.id, t2.id])
+
+        ordered = await svc.get_by_calendar(cal.id)
+        assert [t.id for t in ordered] == [t3.id, t1.id, t2.id]
+        assert [t.sort_order for t in ordered] == [0, 1, 2]
+
+    @pytest.mark.asyncio
+    async def test_can_edit_task_permissions(self, db_session):
+        owner = await make_user(db_session, username="owner")
+        reader = await make_user(db_session, username="reader")
+        writer = await make_user(db_session, username="writer")
+        cal_read = await make_calendar(db_session, owner.id, name="ReadShared")
+        cal_write = await make_calendar(db_session, owner.id, name="WriteShared")
+        await make_share(db_session, cal_read.id, reader.id, SharePermission.READ)
+        await make_share(db_session, cal_write.id, writer.id, SharePermission.WRITE)
+
+        t_read = await make_task(db_session, cal_read.id, summary="r")
+        t_write = await make_task(db_session, cal_write.id, summary="w")
+
+        svc = TaskService(db_session)
+        assert await svc.can_edit_task(t_read.id, reader.id) is False
+        assert await svc.can_edit_task(t_write.id, writer.id) is True
+        assert await svc.can_edit_task(t_read.id, owner.id) is True
+
+    @pytest.mark.asyncio
+    async def test_update_delete_missing(self, db_session):
+        svc = TaskService(db_session)
+        assert await svc.update_task(99999, summary="x") is None
+        assert await svc.delete(99999) is False
+        await svc.reorder([])
+
+    @pytest.mark.asyncio
+    async def test_update_task_fields(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        svc = TaskService(db_session)
+        created = await svc.create_task(cal.id, summary="orig")
+        updated = await svc.update_task(
+            created.id, summary="renamed", priority=5, description="desc"
+        )
+        assert updated is not None
+        assert updated.summary == "renamed"
+        assert updated.priority == 5
+        assert updated.description == "desc"
+
+    @pytest.mark.asyncio
+    async def test_get_tasks_for_user_spans_owned_and_shared(self, db_session):
+        owner = await make_user(db_session, username="owner")
+        other = await make_user(db_session, username="other")
+        cal_own = await make_calendar(db_session, other.id, name="Own")
+        cal_shared = await make_calendar(db_session, owner.id, name="Shared")
+        cal_private = await make_calendar(db_session, owner.id, name="Private")
+        await make_share(db_session, cal_shared.id, other.id, SharePermission.READ)
+
+        await make_task(db_session, cal_own.id, summary="mine")
+        await make_task(db_session, cal_shared.id, summary="shared")
+        await make_task(db_session, cal_private.id, summary="hidden")
+
+        svc = TaskService(db_session)
+        tasks = await svc.get_tasks_for_user(other.id)
+        summaries = {t.summary for t in tasks}
+        assert "mine" in summaries
+        assert "shared" in summaries
+        assert "hidden" not in summaries
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_missing_returns_none(self, db_session):
+        svc = TaskService(db_session)
+        assert await svc.get_by_id(99999) is None

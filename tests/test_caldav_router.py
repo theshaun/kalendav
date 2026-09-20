@@ -10,11 +10,12 @@ import pytest
 from lxml import etree
 from sqlalchemy import select
 
-from app.models import Calendar, Event
+from app.models import Calendar, Event, Task
 from app.models.share import SharePermission
-from tests.conftest import basic_auth_header, make_calendar, make_event, make_share, make_user
+from tests.conftest import basic_auth_header, make_api_key, make_calendar, make_event, make_share, make_task, make_user
 
 D = "{DAV:}"
+C = "{urn:ietf:params:xml:ns:caldav}"
 ICAL = "{http://apple.com/ns/ical/}"
 
 PUT_ICS = """BEGIN:VCALENDAR
@@ -26,6 +27,18 @@ SUMMARY:{summary}
 DTSTART:20260601T100000Z
 DTEND:20260601T110000Z
 END:VEVENT
+END:VCALENDAR
+"""
+
+PUT_VTODO_ICS = """BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VTODO
+UID:{uid}
+DTSTAMP:20260701T000000Z
+SUMMARY:{summary}
+STATUS:{status}
+END:VTODO
 END:VCALENDAR
 """
 
@@ -242,18 +255,20 @@ async def test_get_unknown_event_returns_404(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_calendar_event_path_quirk_returns_404(client, db_session):
-    # QUIRK: handle_get requires len(path_parts) >= 5 for the calendar path,
-    # but /dav/{user}/calendars/{cal_id}/{uid}.ics is only 4 parts, so it 404s.
+async def test_get_calendar_event_path_returns_single_event(client, db_session):
+    # B1 fix: this 4-part path now returns the single Event (was a 404 quirk before).
     owner = await make_user(db_session, username="alice", password="pw")
     cal = await make_calendar(db_session, owner.id, name="C")
-    ev = await make_event(db_session, cal.id, uid="q", summary="Q",
+    ev = await make_event(db_session, cal.id, uid="q", summary="Q-Ev",
                           dtstart=datetime(2026, 6, 1, 10, 0, 0))
     resp = await client.get(
         f"/dav/alice/calendars/{cal.id}/{ev.uid}.ics",
         headers=basic_auth_header("alice", "pw"),
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/calendar")
+    assert "BEGIN:VEVENT" in resp.text
+    assert ev.uid in resp.text
 
 
 # ---------- PUT ----------
@@ -302,8 +317,6 @@ async def test_put_with_tzid_round_trips_through_get(client, db_session):
     # The server must preserve the TZID so a subsequent GET returns the same
     # wall-clock the client sent, not a UTC-shifted value.
     user = await make_user(db_session, username="alice", password="pw")
-    # Use default calendar so /dav/{uid}.ics path resolves (the calendar-specific
-    # GET path has a pre-existing off-by-one — see test_get_calendar_event_path_quirk_returns_404).
     cal = await make_calendar(db_session, user.id, name="C", is_default=True)
     put_body = (
         "BEGIN:VCALENDAR\r\n"
@@ -338,6 +351,48 @@ async def test_put_with_tzid_round_trips_through_get(client, db_session):
     )
     assert get_resp.status_code == 200
     assert "DTSTART;TZID=Australia/Brisbane:20260715T090000" in get_resp.text
+
+
+@pytest.mark.asyncio
+async def test_put_all_day_value_date_sets_flag_and_feed_renders_date(client, db_session):
+    # Regression (Outlook symptom): handle_put never set is_all_day, so a
+    # client-PUT multi-day VALUE=DATE event was re-emitted by the ICS feed as
+    # DTSTART;TZID=Australia/Brisbane:...T100000 — all-day events showed as
+    # 10:00-10:00 next day in UTC+10 clients.
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C", is_default=True)
+    put_body = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//Test//EN\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:allday-rt@test\r\n"
+        "SUMMARY:Trip\r\n"
+        "DTSTART;VALUE=DATE:20260920\r\n"
+        "DTEND;VALUE=DATE:20260923\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/allday-rt@test.ics",
+        headers=basic_auth_header("alice", "pw"), content=put_body,
+    )
+    assert resp.status_code == 201
+
+    result = await db_session.execute(
+        Event.__table__.select().where(Event.uid == "allday-rt@test")
+    )
+    row = result.one()
+    assert row.is_all_day == 1
+    assert row.dtstart == datetime(2026, 9, 20, 0, 0, 0)
+    assert row.dtend == datetime(2026, 9, 23, 0, 0, 0)
+
+    _, plain = await make_api_key(db_session, user.id, name="k")
+    feed = await client.get(f"/ics/{cal.id}?api_key={plain}")
+    assert feed.status_code == 200
+    assert "DTSTART;VALUE=DATE:20260920" in feed.text
+    assert "DTEND;VALUE=DATE:20260923" in feed.text
+    assert "T100000" not in feed.text
 
 
 @pytest.mark.asyncio
@@ -545,3 +600,351 @@ async def test_report_read_share_allowed(client, db_session):
         headers=basic_auth_header("reader", "pw"), content=b"",
     )
     assert resp.status_code == 207
+
+
+# ---------- VTODO ----------
+
+@pytest.mark.asyncio
+async def test_propfind_advertises_vtodo(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    headers = {**basic_auth_header("alice", "pw"), "Depth": "1"}
+    resp = await client.request(
+        "PROPFIND", f"/dav/alice/calendars/{cal.id}/", headers=headers
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    comp_names = {
+        c.get("name")
+        for c in root.iter(f"{C}comp")
+        if c.get("name") is not None
+    }
+    assert "VEVENT" in comp_names, "calendar must still advertise VEVENT"
+    assert "VTODO" in comp_names, "calendar must advertise VTODO (T4)"
+
+
+@pytest.mark.asyncio
+async def test_put_get_delete_vtodo(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    body = PUT_VTODO_ICS.format(uid="vtodo-1", summary="Walk the dog", status="NEEDS-ACTION").encode()
+    put_resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/vtodo-1.ics",
+        headers=basic_auth_header("alice", "pw"), content=body,
+    )
+    assert put_resp.status_code == 201
+    assert "ETag" in put_resp.headers
+
+    result = await db_session.execute(Task.__table__.select())
+    rows = result.fetchall()
+    assert any(r.uid == "vtodo-1" for r in rows), "PUT must persist a Task row"
+
+    get_resp = await client.get(
+        f"/dav/alice/calendars/{cal.id}/vtodo-1.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.headers["content-type"].startswith("text/calendar")
+    assert "BEGIN:VTODO" in get_resp.text
+
+    del_resp = await client.request(
+        "DELETE", f"/dav/alice/calendars/{cal.id}/vtodo-1.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert del_resp.status_code == 204
+    after = await db_session.execute(Task.__table__.select())
+    assert not any(r.uid == "vtodo-1" for r in after.fetchall())
+
+
+@pytest.mark.asyncio
+async def test_get_single_vtodo_not_merged_calendar(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    # Negative-assertion seed: an unrelated VEVENT in the same calendar.
+    await make_event(db_session, cal.id, uid="other-ev", summary="OtherEv",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="single-vtodo", summary="Only Task")
+
+    resp = await client.get(
+        f"/dav/alice/calendars/{cal.id}/single-vtodo.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert resp.status_code == 200
+    assert "BEGIN:VTODO" in resp.text
+    assert "Only Task" in resp.text
+    assert "BEGIN:VEVENT" not in resp.text, "single-resource GET must not merge the calendar"
+    assert "OtherEv" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_sync_token_changes_on_task_put(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+
+    async def current_token() -> str:
+        resp = await client.request(
+            "PROPFIND", f"/dav/alice/calendars/{cal.id}/",
+            headers=basic_auth_header("alice", "pw"),
+        )
+        root = etree.fromstring(resp.content)
+        tokens = list(root.iter(f"{D}sync-token"))
+        assert tokens, "PROPFIND must return a sync-token"
+        return tokens[0].text
+
+    before = await current_token()
+    body = PUT_VTODO_ICS.format(uid="sync-t", summary="Syncer", status="NEEDS-ACTION").encode()
+    put_resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/sync-t.ics",
+        headers=basic_auth_header("alice", "pw"), content=body,
+    )
+    assert put_resp.status_code == 201
+    after = await current_token()
+    assert before != after, "sync-token must advance when a Task is PUT (B2 fix)"
+
+
+@pytest.mark.asyncio
+async def test_vevent_regression(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    body = PUT_ICS.format(uid="vev-1", summary="Still Works").encode()
+    put_resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/vev-1.ics",
+        headers=basic_auth_header("alice", "pw"), content=body,
+    )
+    assert put_resp.status_code == 201
+    assert "ETag" in put_resp.headers
+
+    get_resp = await client.get(
+        f"/dav/alice/calendars/{cal.id}/vev-1.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert get_resp.status_code == 200
+    assert "BEGIN:VEVENT" in get_resp.text
+
+    del_resp = await client.request(
+        "DELETE", f"/dav/alice/calendars/{cal.id}/vev-1.ics",
+        headers=basic_auth_header("alice", "pw"),
+    )
+    assert del_resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_propfind_depth1_lists_tasks(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_task(db_session, cal.id, uid="listed-task", summary="Listed")
+    headers = {**basic_auth_header("alice", "pw"), "Depth": "1"}
+    resp = await client.request(
+        "PROPFIND", f"/dav/alice/calendars/{cal.id}/", headers=headers
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    hrefs = [h.text for h in root.iter(f"{D}href")]
+    assert any(h and h.endswith("listed-task.ics") for h in hrefs), \
+        "PROPFIND Depth:1 must list Task resources alongside Events"
+
+
+@pytest.mark.asyncio
+async def test_put_malformed_vtodo_does_not_500(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    # Empty VTODO — exercises the new VTODO branch; parse_vtodo never raises.
+    malformed = (
+        b"BEGIN:VCALENDAR\r\n"
+        b"VERSION:2.0\r\n"
+        b"BEGIN:VTODO\r\n"
+        b"END:VTODO\r\n"
+        b"END:VCALENDAR\r\n"
+    )
+    resp = await client.request(
+        "PUT", f"/dav/alice/calendars/{cal.id}/malformed.ics",
+        headers=basic_auth_header("alice", "pw"), content=malformed,
+    )
+    assert resp.status_code != 500, "malformed VTODO must not 500 (parse_vtodo is graceful)"
+    assert resp.status_code == 201, f"unexpected status {resp.status_code}"
+
+
+# ---------- REPORT calendar-query comp-filter (T5) ----------
+
+# Canonical RFC 4791 §7.8.9 "pending-todos" query: VCALENDAR > VTODO with
+# COMPLETED is-not-defined + STATUS text-match negate CANCELLED.
+_PENDING_TODOS_QUERY = """<?xml version="1.0" encoding="UTF-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VTODO">
+        <c:prop-filter name="COMPLETED">
+          <c:is-not-defined/>
+        </c:prop-filter>
+        <c:prop-filter name="STATUS">
+          <c:text-match negate-condition="yes">CANCELLED</c:text-match>
+        </c:prop-filter>
+      </c:comp-filter>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>
+"""
+
+_VTODO_ONLY_QUERY = """<?xml version="1.0" encoding="UTF-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VTODO"/>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>
+"""
+
+_VEVENT_ONLY_QUERY = """<?xml version="1.0" encoding="UTF-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data/>
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VEVENT"/>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>
+"""
+
+# A non-calendar-query REPORT root. Must fall back to the prior all-events
+# behavior (M4 gate) — sync-collection consumers see no change.
+_SYNC_COLLECTION_SHAPED = """<?xml version="1.0" encoding="UTF-8"?>
+<d:sync-collection xmlns:d="DAV:">
+  <d:sync-token/>
+  <d:prop>
+    <d:getetag/>
+  </d:prop>
+</d:sync-collection>
+"""
+
+
+def _response_uids(root: etree._Element) -> set[str]:
+    """Pull the trailing {uid}.ics segment off every returned <d:href>."""
+    uids: set[str] = set()
+    for href in root.iter(f"{D}href"):
+        text = href.text or ""
+        if text.endswith(".ics"):
+            uids.add(text.rsplit("/", 1)[-1][: -len(".ics")])
+    return uids
+
+
+@pytest.mark.asyncio
+async def test_report_vtodo_comp_filter(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="evt-1", summary="Evt",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="todo-active",
+                    summary="Active", status="NEEDS-ACTION")
+    await make_task(db_session, cal.id, uid="todo-done",
+                    summary="Done", status="COMPLETED",
+                    completed=datetime(2026, 6, 1, 12, 0, 0),
+                    percent_complete=100)
+
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=_PENDING_TODOS_QUERY.encode(),
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    uids = _response_uids(root)
+
+    assert "todo-active" in uids, "pending VTODO must be returned"
+    assert "todo-done" not in uids, (
+        "COMPLETED VTODO must be dropped by COMPLETED is-not-defined"
+    )
+    assert "evt-1" not in uids, "VEVENT must be excluded (only VTODO requested)"
+    assert uids == {"todo-active"}, f"expected exactly one VTODO, got {uids}"
+
+
+@pytest.mark.asyncio
+async def test_report_vevent_comp_filter(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="evt-1", summary="Evt",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="todo-1", summary="T")
+
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=_VEVENT_ONLY_QUERY.encode(),
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    uids = _response_uids(root)
+    assert "evt-1" in uids
+    assert "todo-1" not in uids
+
+
+@pytest.mark.asyncio
+async def test_report_vtodo_only_excludes_events(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="evt-1", summary="Evt",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="todo-1", summary="T1")
+    await make_task(db_session, cal.id, uid="todo-2", summary="T2")
+
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=_VTODO_ONLY_QUERY.encode(),
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    uids = _response_uids(root)
+    assert uids == {"todo-1", "todo-2"}, f"expected both tasks, got {uids}"
+
+
+@pytest.mark.asyncio
+async def test_report_unparseable_body_fallback(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="evt-1", summary="Evt",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="todo-1", summary="T")
+
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=b"this is not xml <<<",
+    )
+    assert resp.status_code == 207, "malformed REPORT body must not raise 500"
+    root = etree.fromstring(resp.content)
+    uids = _response_uids(root)
+    # Fallback path returns events only (no tasks) — preserves prior behavior.
+    assert "evt-1" in uids
+    assert "todo-1" not in uids
+
+
+@pytest.mark.asyncio
+async def test_report_non_calendar_query_unchanged(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+    await make_event(db_session, cal.id, uid="evt-1", summary="Evt",
+                     dtstart=datetime(2026, 6, 1, 10, 0, 0))
+    await make_task(db_session, cal.id, uid="todo-1", summary="T")
+
+    resp = await client.request(
+        "REPORT", f"/dav/alice/calendars/{cal.id}/",
+        headers=basic_auth_header("alice", "pw"),
+        content=_SYNC_COLLECTION_SHAPED.encode(),
+    )
+    assert resp.status_code == 207
+    root = etree.fromstring(resp.content)
+    uids = _response_uids(root)
+    assert "evt-1" in uids
+    assert "todo-1" not in uids, "non-calendar-query path must surface no tasks"
