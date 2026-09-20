@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.event import Event
+    from app.models.task import Task
     from app.models.share import CalendarShare
 
 
@@ -27,6 +28,7 @@ class Calendar(Base):
     
     user: Mapped["User"] = relationship("User", back_populates="calendars")
     events: Mapped[list["Event"]] = relationship("Event", back_populates="calendar", cascade="all, delete-orphan")
+    tasks: Mapped[list["Task"]] = relationship("Task", back_populates="calendar", cascade="all, delete-orphan")
     shares: Mapped[list["CalendarShare"]] = relationship("CalendarShare", back_populates="calendar", cascade="all, delete-orphan")
     
     @property

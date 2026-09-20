@@ -19,7 +19,7 @@ from app.auth.basic import generate_api_key, hash_api_key, hash_password
 from app.caldav.ics_parser import generate_ics
 from app.database import Base, get_db
 from app.main import app
-from app.models import APIKey, Calendar, CalendarShare, Event, User
+from app.models import APIKey, Calendar, CalendarShare, Event, Task, User
 from app.models.share import SharePermission
 
 
@@ -175,6 +175,52 @@ async def make_api_key(db, user_id, name="key"):
     await db.commit()
     await db.refresh(api_key)
     return api_key, plain
+
+
+async def make_task(db, calendar_id, **kw):
+    """Seed a Task. Populates the non-nullable raw_ics with a hardcoded
+    minimal VTODO ICS literal when not explicitly provided (generate_vtodo
+    does not exist yet; importing it would break the whole test suite)."""
+    uid = kw.get("uid") or str(uuid.uuid4())
+    summary = kw.get("summary")
+    status = kw.get("status", "NEEDS-ACTION")
+    priority = kw.get("priority")
+    due = kw.get("due")
+    completed = kw.get("completed")
+    percent_complete = kw.get("percent_complete")
+    sort_order = kw.get("sort_order", 0)
+    description = kw.get("description")
+    raw_ics = kw.get("raw_ics")
+    if raw_ics is None:
+        raw_ics = (
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "PRODID:-//KalenDAV//EN\n"
+            "BEGIN:VTODO\n"
+            f"UID:{uid}\n"
+            "DTSTAMP:20260101T000000Z\n"
+            f"SUMMARY:{summary or ''}\n"
+            f"STATUS:{status}\n"
+            "END:VTODO\n"
+            "END:VCALENDAR"
+        )
+    task = Task(
+        calendar_id=calendar_id,
+        uid=uid,
+        summary=summary,
+        description=description,
+        status=status,
+        priority=priority,
+        due=due,
+        completed=completed,
+        percent_complete=percent_complete,
+        sort_order=sort_order,
+        raw_ics=raw_ics,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    return task
 
 
 async def make_share(db, calendar_id, user_id, permission):

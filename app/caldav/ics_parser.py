@@ -1,4 +1,4 @@
-from icalendar import Calendar, Event as ICalEvent, Timezone as ICalTimezone, vDate, vDatetime
+from icalendar import Calendar, Event as ICalEvent, Timezone as ICalTimezone, Todo as ICalTodo
 from datetime import datetime, timedelta, date, timezone
 from typing import Optional, Tuple, List, Dict
 from dateutil import parser as date_parser
@@ -80,7 +80,7 @@ def _add_vtimezone_if_needed(cal: Calendar) -> None:
     _add_vtimezone(cal, settings.default_timezone)
 
 
-def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str], Optional[str], Optional[str]]:
+def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], datetime, Optional[datetime], Optional[str], Optional[str], Optional[str], Optional[str], bool]:
     cal = Calendar.from_ical(ics_content)
 
     uid = str(uuid.uuid4())
@@ -92,6 +92,7 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
     rrule = None
     color = None
     event_tz = None
+    is_all_day = False
 
     for component in cal.walk():
         if component.name == "VEVENT":
@@ -103,7 +104,11 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
                 description = str(component.get("description"))
             if component.get("dtstart"):
                 event_tz = extract_tzid(component)
-                dtstart = component.get("dtstart").dt
+                original_dt = component.get("dtstart").dt
+                # RFC 5545 §3.3.4: a DATE-valued DTSTART marks an all-day event.
+                if isinstance(original_dt, date) and not isinstance(original_dt, datetime):
+                    is_all_day = True
+                dtstart = original_dt
                 if not isinstance(dtstart, datetime):
                     dtstart = datetime.combine(dtstart, datetime.min.time())
                 dtstart = ensure_utc_naive(dtstart)
@@ -128,7 +133,7 @@ def parse_ics(ics_content: str) -> Tuple[str, Optional[str], Optional[str], date
     if dtstart is None:
         dtstart = datetime.utcnow()
 
-    return uid, summary, description, dtstart, dtend, location, rrule, color, event_tz
+    return uid, summary, description, dtstart, dtend, location, rrule, color, event_tz, is_all_day
 
 
 def parse_ics_bulk(ics_content: str) -> List[Dict]:
@@ -278,11 +283,15 @@ def generate_ics(
     event.add("uid", uid)
 
     if is_all_day:
+        # DATE values carry no tz (RFC 5545 §3.3.4); stored dtstart is the
+        # UTC-midnight of the wall date, so .date() reproduces it exactly.
         start_date = dtstart.date() if isinstance(dtstart, datetime) else dtstart
-        event.add("dtstart", vDate(start_date))
+        event.add("dtstart", start_date, {"value": "DATE"})
         if dtend:
             end_date = dtend.date() if isinstance(dtend, datetime) else dtend
-            event.add("dtend", vDate(end_date))
+            event.add("dtend", end_date, {"value": "DATE"})
+        else:
+            event.add("dtend", start_date + timedelta(days=1), {"value": "DATE"})
     else:
         localized_start = convert_utc_to_tz(dtstart, timezone)
         event.add("dtstart", localized_start)
@@ -409,3 +418,152 @@ def generate_calendar_ics(events: list, calendar_name: str = "Calendar", calenda
         cal.add_component(ical_event)
 
     return cal.to_ical().decode("utf-8")
+
+
+_VTODO_EMPTY: Dict = {
+    "uid": None,
+    "summary": None,
+    "description": None,
+    "status": None,
+    "priority": None,
+    "due": None,
+    "completed": None,
+    "percent_complete": None,
+}
+
+
+def parse_vtodo(ics_content: str) -> Dict:
+    """First VTODO in the blob, or an all-None dict if no VTODO is present.
+
+    Never raises: malformed input or missing fields collapse to None.
+    """
+    try:
+        cal = Calendar.from_ical(ics_content)
+    except Exception:
+        return dict(_VTODO_EMPTY)
+
+    component = None
+    for c in cal.walk("VTODO"):
+        component = c
+        break
+
+    if component is None:
+        return dict(_VTODO_EMPTY)
+
+    raw_uid = component.get("uid")
+    uid = str(raw_uid) if raw_uid else str(uuid.uuid4())
+
+    raw_summary = component.get("summary")
+    summary = str(raw_summary) if raw_summary else None
+
+    raw_description = component.get("description")
+    description = str(raw_description) if raw_description else None
+
+    raw_status = component.get("status")
+    status = str(raw_status).upper() if raw_status else "NEEDS-ACTION"
+
+    priority: Optional[int] = None
+    raw_priority = component.get("priority")
+    if raw_priority is not None:
+        try:
+            priority = int(raw_priority)
+        except (TypeError, ValueError):
+            priority = None
+
+    due: Optional[datetime] = None
+    try:
+        raw_due = component.decoded("DUE")
+    except KeyError:
+        raw_due = None
+    except Exception:
+        raw_due = None
+    if isinstance(raw_due, datetime):
+        due = ensure_utc_naive(raw_due)
+    elif isinstance(raw_due, date):
+        due = ensure_utc_naive(datetime.combine(raw_due, datetime.min.time()))
+
+    completed: Optional[datetime] = None
+    try:
+        raw_completed = component.decoded("COMPLETED")
+    except KeyError:
+        raw_completed = None
+    except Exception:
+        raw_completed = None
+    if isinstance(raw_completed, datetime):
+        completed = ensure_utc_naive(raw_completed)
+    elif isinstance(raw_completed, date):
+        completed = ensure_utc_naive(datetime.combine(raw_completed, datetime.min.time()))
+
+    percent_complete: Optional[int] = None
+    raw_percent = component.get("percent-complete")
+    if raw_percent is not None:
+        try:
+            percent_complete = int(raw_percent)
+        except (TypeError, ValueError):
+            percent_complete = None
+
+    return {
+        "uid": uid,
+        "summary": summary,
+        "description": description,
+        "status": status,
+        "priority": priority,
+        "due": due,
+        "completed": completed,
+        "percent_complete": percent_complete,
+    }
+
+
+def generate_vtodo(
+    uid: str,
+    summary: str,
+    status: str = "NEEDS-ACTION",
+    description: Optional[str] = None,
+    priority: Optional[int] = None,
+    due: Optional[datetime] = None,
+    completed: Optional[datetime] = None,
+    percent_complete: Optional[int] = None,
+    timezone: Optional[str] = None,
+) -> str:
+    effective_tz = timezone or settings.default_timezone
+    cal = Calendar()
+    cal.add("prodid", "-//KalenDAV Server//EN")
+    cal.add("version", "2.0")
+    cal.add("calscale", "GREGORIAN")
+    cal.add("method", "PUBLISH")
+    cal.add("x-wr-timezone", effective_tz)
+    _add_vtimezone(cal, effective_tz)
+
+    todo = ICalTodo()
+    todo.add("uid", uid)
+    todo.add("dtstamp", datetime.utcnow())
+    todo.add("summary", summary)
+    if description:
+        todo.add("description", description)
+    if status:
+        todo.add("status", status.upper())
+    if priority is not None:
+        todo.add("priority", priority)
+    if due:
+        todo.add("due", convert_utc_to_tz(due, timezone))
+    if completed:
+        todo.add("completed", completed)
+    if percent_complete is not None:
+        todo.add("percent-complete", percent_complete)
+
+    cal.add_component(todo)
+    return cal.to_ical().decode("utf-8")
+
+
+def detect_component(ics_content: str) -> str:
+    # VTODO is checked before VEVENT so a mixed blob classifies as a task.
+    try:
+        cal = Calendar.from_ical(ics_content)
+    except Exception:
+        return ""
+    names = {component.name for component in cal.walk()}
+    if "VTODO" in names:
+        return "VTODO"
+    if "VEVENT" in names:
+        return "VEVENT"
+    return ""
