@@ -326,7 +326,7 @@ def build_rrule(
     until: Optional[datetime] = None,
     byday: Optional[list] = None,
 ) -> Optional[str]:
-    if freq == "none":
+    if not freq or freq == "none":
         return None
     
     freq_map = {
