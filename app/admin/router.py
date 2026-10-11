@@ -23,7 +23,7 @@ from app.config import settings, get_base_uri
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta, timezone
 import json
-from typing import Optional
+from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
 from app.admin.template_filters import register_template_filters
@@ -106,6 +106,65 @@ def _parse_form_dt(value: Optional[str], client_tz, all_day: bool) -> Optional[d
         return dt.astimezone(timezone.utc).replace(tzinfo=None)
     except ValueError:
         return None
+
+
+def _parse_form_until(value: Optional[str], client_tz) -> Optional[datetime]:
+    """RRULE UNTIL form value -> naive UTC datetime; None when absent/unparseable.
+
+    A date-only value (from the date picker) keeps UTC midnight: UNTIL is a
+    boundary, and shifting it by the client tz would drop occurrences on the
+    final day for users east of UTC.
+    """
+    if not value:
+        return None
+    if "T" not in value:
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=client_tz)
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _form_rrule(
+    freq: Optional[str],
+    interval: int,
+    count: Optional[Union[int, str]],
+    end_type: Optional[str],
+    until: Optional[str],
+    client_tz,
+) -> Optional[str]:
+    """Event-modal recurrence fields -> RRULE string.
+
+    The modal always submits both rrule_count (stale default "10") and
+    rrule_until (empty unless picked); rrule_end_type (never|count|until)
+    picks which limit applies. Inputs the browser may send blank must never
+    raise — blank/unparseable limits collapse to an unbounded recurrence.
+    """
+    if not freq or freq == "none":
+        return None
+
+    try:
+        count_val = int(count) if str(count).strip() else None
+    except (TypeError, ValueError):
+        count_val = None
+
+    until_val = _parse_form_until(until, client_tz)
+
+    if end_type == "count":
+        until_val = None
+    elif end_type == "until":
+        count_val = None
+    elif end_type == "never":
+        count_val = None
+        until_val = None
+
+    return build_rrule(freq=freq, interval=interval, count=count_val, until=until_val)
 
 
 def check_admin(user: User):
@@ -1256,7 +1315,8 @@ async def create_event(
     color: Optional[str] = Form(None),
     rrule_freq: Optional[str] = Form(None),
     rrule_interval: int = Form(1),
-    rrule_count: Optional[int] = Form(None),
+    rrule_count: Optional[str] = Form(None),
+    rrule_end_type: Optional[str] = Form(None),
     rrule_until: Optional[str] = Form(None),
     tz: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
@@ -1264,14 +1324,14 @@ async def create_event(
 ):
     event_service = EventService(db)
     writable_ids = await event_service.get_writable_calendars(user.id)
-    
+
     if calendar_id not in writable_ids:
         raise HTTPException(status_code=403, detail="Cannot create event in this calendar")
-    
+
     # Empty/whitespace tz must collapse to None so `if tz` falls back to UTC.
     tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
-    
+
     dtstart_utc = _parse_form_dt(dtstart, client_tz, is_all_day)
     if dtstart_utc is None:
         fallback = datetime.now(client_tz)
@@ -1284,25 +1344,9 @@ async def create_event(
     dtend_utc = _parse_form_dt(dtend, client_tz, is_all_day)
     if dtend_utc is None:
         dtend_utc = dtstart_utc + (timedelta(days=1) if is_all_day else timedelta(hours=1))
-    
-    rrule = None
-    until_dt = None
-    if rrule_freq and rrule_freq != "none":
-        try:
-            until_dt = datetime.fromisoformat(rrule_until.replace("Z", "+00:00"))
-            if until_dt.tzinfo is None:
-                until_dt = until_dt.replace(tzinfo=client_tz)
-            until_dt = until_dt.astimezone(timezone.utc).replace(tzinfo=None)
-        except:
-            until_dt = datetime.strptime(rrule_until, "%Y-%m-%d")
-    
-    rrule = build_rrule(
-        freq=rrule_freq,
-        interval=rrule_interval,
-        count=rrule_count,
-        until=until_dt,
-    )
-    
+
+    rrule = _form_rrule(rrule_freq, rrule_interval, rrule_count, rrule_end_type, rrule_until, client_tz)
+
     await event_service.create_event(
         calendar_id=calendar_id,
         summary=summary,
@@ -1334,25 +1378,26 @@ async def update_event(
     color: Optional[str] = Form(None),
     rrule_freq: Optional[str] = Form(None),
     rrule_interval: int = Form(1),
-    rrule_count: Optional[int] = Form(None),
+    rrule_count: Optional[str] = Form(None),
+    rrule_end_type: Optional[str] = Form(None),
     rrule_until: Optional[str] = Form(None),
     tz: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
     event_service = EventService(db)
-    
+
     if not await event_service.can_edit_event(event_id, user.id):
         raise HTTPException(status_code=403, detail="Cannot edit this event")
-    
+
     writable_ids = await event_service.get_writable_calendars(user.id)
     if calendar_id not in writable_ids:
         raise HTTPException(status_code=403, detail="Cannot move event to this calendar")
-    
+
     # Empty/whitespace tz must collapse to None (see create_event).
     tz = (tz or "").strip() or None
     client_tz = ZoneInfo(tz) if tz else timezone.utc
-    
+
     dtstart_utc = _parse_form_dt(dtstart, client_tz, is_all_day)
     if dtstart_utc is None:
         fallback = datetime.now(client_tz)
@@ -1365,25 +1410,9 @@ async def update_event(
     dtend_utc = _parse_form_dt(dtend, client_tz, is_all_day)
     if dtend_utc is None:
         dtend_utc = dtstart_utc + (timedelta(days=1) if is_all_day else timedelta(hours=1))
-    
-    rrule = None
-    until_dt = None
-    if rrule_freq and rrule_freq != "none":
-        try:
-            until_dt = datetime.fromisoformat(rrule_until.replace("Z", "+00:00"))
-            if until_dt.tzinfo is None:
-                until_dt = until_dt.replace(tzinfo=client_tz)
-            until_dt = until_dt.astimezone(timezone.utc).replace(tzinfo=None)
-        except:
-            until_dt = datetime.strptime(rrule_until, "%Y-%m-%d")
-    
-    rrule = build_rrule(
-        freq=rrule_freq,
-        interval=rrule_interval,
-        count=rrule_count,
-        until=until_dt,
-    )
-    
+
+    rrule = _form_rrule(rrule_freq, rrule_interval, rrule_count, rrule_end_type, rrule_until, client_tz)
+
     event = await event_service.get_by_id(event_id)
     if event and event.calendar_id != calendar_id:
         event.calendar_id = calendar_id
