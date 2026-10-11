@@ -55,6 +55,20 @@
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right">
                     <div class="inline-flex items-center gap-1">
+                        {% if cal.user_id == user.id %}
+                        <a href="/admin/calendar?calendar={{ cal.id }}"
+                           class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                           aria-label="Open {{ cal.name }} in calendar"
+                           title="Open in calendar">
+                            <i data-lucide="calendar-days" class="h-4 w-4"></i>
+                        </a>
+                        <a href="/admin/tasks?calendar={{ cal.id }}"
+                           class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus"
+                           aria-label="Show tasks for {{ cal.name }}"
+                           title="Tasks">
+                            <i data-lucide="list-todo" class="h-4 w-4"></i>
+                        </a>
+                        {% endif %}
                         <a href="/admin/calendars/{{ cal.id }}/edit"
                            class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary hover:text-text-primary px-2.5 py-1.5 rounded-md hover:bg-hover transition-colors duration-instant focus-visible:outline-none focus-visible:shadow-focus">
                             <i data-lucide="pencil" class="h-3.5 w-3.5"></i>

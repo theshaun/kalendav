@@ -1087,6 +1087,7 @@ async def get_calendar_events(
     start: str,
     end: str,
     tz: Optional[str] = None,
+    calendar: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -1109,6 +1110,13 @@ async def get_calendar_events(
     end_utc = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
     
     events = await event_service.get_events_for_user(user.id, start_utc, end_utc)
+
+    # Filter only when the id belongs to the user's accessible set; a foreign
+    # id is ignored rather than emptying (or leaking) the view.
+    if calendar is not None:
+        accessible = await event_service.get_user_accessible_calendars(user.id)
+        if calendar in accessible:
+            events = [e for e in events if e.calendar_id == calendar]
     
     events_data = []
     for event in events:
@@ -1637,6 +1645,7 @@ async def _render_task_list(db: AsyncSession, user: User, request: Request) -> H
 @router.get("/tasks", response_class=HTMLResponse)
 async def task_manager(
     request: Request,
+    calendar: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -1648,6 +1657,11 @@ async def task_manager(
     result = await db.execute(select(Calendar).where(Calendar.id.in_(writable_ids)))
     writable_calendars = list(result.scalars().all())
 
+    if calendar is not None and calendar in writable_ids:
+        tasks = [t for t in tasks if t.calendar_id == calendar]
+    else:
+        calendar = None
+
     return templates.TemplateResponse(
         "tasks.html",
         {
@@ -1656,6 +1670,7 @@ async def task_manager(
             "tasks": tasks,
             "calendars": writable_calendars,
             "writable_calendar_ids": writable_ids,
+            "selected_calendar_id": calendar,
         },
     )
 

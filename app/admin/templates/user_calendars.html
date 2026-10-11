@@ -42,6 +42,22 @@
       </div>
       <div class="col-span-6 md:col-span-1 flex items-center justify-end gap-1">
         <a
+          href="/admin/calendar?calendar={{ calendar.id }}"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Open {{ calendar.name }} in calendar"
+          title="Open in calendar"
+        >
+          <i data-lucide="calendar-days" class="h-4 w-4"></i>
+        </a>
+        <a
+          href="/admin/tasks?calendar={{ calendar.id }}"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
+          aria-label="Show tasks for {{ calendar.name }}"
+          title="Tasks"
+        >
+          <i data-lucide="list-todo" class="h-4 w-4"></i>
+        </a>
+        <a
           href="/admin/my-calendars/{{ calendar.id }}/edit"
           class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:text-text-primary hover:bg-elevated transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
           aria-label="Edit {{ calendar.name }}"

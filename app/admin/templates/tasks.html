@@ -45,7 +45,7 @@
         class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
       >
         {% for cal in calendars %}
-        <option value="{{ cal.id }}">{{ cal.name }}</option>
+        <option value="{{ cal.id }}" {% if cal.id == selected_calendar_id %}selected{% endif %}>{{ cal.name }}</option>
         {% endfor %}
       </select>
     </div>

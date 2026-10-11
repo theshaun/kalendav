@@ -209,3 +209,22 @@ async def test_create_task_in_unwritable_calendar_is_403(client, db_session):
 
     result = await db_session.execute(select(Task))
     assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_task_page_filters_by_calendar_param(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal_a = await make_calendar(db_session, user.id, name="A")
+    cal_b = await make_calendar(db_session, user.id, name="B")
+    await make_task(db_session, cal_a.id, summary="TaskA")
+    await make_task(db_session, cal_b.id, summary="TaskB")
+    login = await client.post("/admin/login", data={"username": "alice", "password": "pw"})
+    assert login.status_code == 302
+
+    resp = await client.get("/admin/tasks", params={"calendar": cal_a.id})
+    assert resp.status_code == 200
+    assert "TaskA" in resp.text
+    assert "TaskB" not in resp.text
+
+    unfiltered = await client.get("/admin/tasks")
+    assert "TaskA" in unfiltered.text and "TaskB" in unfiltered.text

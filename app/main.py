@@ -56,6 +56,11 @@ async def health():
     return {"status": "ok", "version": __version__}
 
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/admin/")
+
+
 @app.api_route("/.well-known/caldav", methods=["GET", "HEAD", "PROPFIND", "OPTIONS"])
 async def well_known_caldav(request: Request):
     """RFC 6764 §3.3 CalDAV discovery endpoint."""

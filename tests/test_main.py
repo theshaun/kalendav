@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.admin.router import _parse_form_dt
-from tests.conftest import basic_auth_header, make_calendar, make_user
+from tests.conftest import basic_auth_header, make_calendar, make_event, make_user
 
 
 @pytest.mark.asyncio
@@ -12,6 +12,58 @@ async def test_health(client):
     response = await client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_root_redirects_to_admin(client):
+    response = await client.get("/", follow_redirects=False)
+    assert response.status_code in (301, 302, 307, 308)
+    assert response.headers["location"].rstrip("/") == "/admin"
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_filter_by_calendar_param(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal_a = await make_calendar(db_session, user.id, name="A")
+    cal_b = await make_calendar(db_session, user.id, name="B")
+    mallory = await make_user(db_session, username="mallory", password="pw")
+    cal_m = await make_calendar(db_session, mallory.id, name="M")
+    await make_event(db_session, cal_a.id, summary="InA",
+                     dtstart=datetime(2026, 10, 5, 1, 0), dtend=datetime(2026, 10, 5, 2, 0))
+    await make_event(db_session, cal_b.id, summary="InB",
+                     dtstart=datetime(2026, 10, 6, 1, 0), dtend=datetime(2026, 10, 6, 2, 0))
+    await make_event(db_session, cal_m.id, summary="NotVisible",
+                     dtstart=datetime(2026, 10, 7, 1, 0), dtend=datetime(2026, 10, 7, 2, 0))
+    login = await client.post("/admin/login", data={"username": "alice", "password": "pw"})
+    assert login.status_code == 302
+
+    async def titles(**params):
+        resp = await client.get("/admin/calendar/events", params={
+            "start": "2026-10-01", "end": "2026-11-01", "tz": "UTC", **params,
+        })
+        assert resp.status_code == 200
+        return [e["title"] for e in resp.json()]
+
+    assert await titles(calendar=cal_a.id) == ["InA"]
+    assert await titles(calendar=cal_b.id) == ["InB"]
+    # An inaccessible calendar id is ignored (no leak, no empty view).
+    got = await titles(calendar=cal_m.id)
+    assert sorted(got) == ["InA", "InB"]
+    assert sorted(await titles()) == ["InA", "InB"]
+
+
+@pytest.mark.asyncio
+async def test_my_calendars_rows_have_calendar_and_task_links(client, db_session):
+    user = await make_user(db_session, username="alice", password="pw")
+    cal = await make_calendar(db_session, user.id, name="A")
+    login = await client.post("/admin/login", data={"username": "alice", "password": "pw"})
+    assert login.status_code == 302
+
+    resp = await client.get("/admin/my-calendars")
+    assert resp.status_code == 200
+    body = resp.text
+    assert f'href="/admin/calendar?calendar={cal.id}"' in body
+    assert f'href="/admin/tasks?calendar={cal.id}"' in body
 
 
 @pytest.mark.asyncio
