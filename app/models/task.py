@@ -32,6 +32,7 @@ class Task(Base):
     completed: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     percent_complete: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    related_to: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_ics: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

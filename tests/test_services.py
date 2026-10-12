@@ -316,7 +316,7 @@ async def test_get_events_for_user_no_calendars_returns_empty(db_session):
 # ---------- TaskService ----------
 
 from app.models.task import TaskStatus  # noqa: E402
-from app.services.task_service import TaskService  # noqa: E402
+from app.services.task_service import TaskService, build_task_tree  # noqa: E402
 from tests.conftest import make_task  # noqa: E402
 
 
@@ -463,3 +463,104 @@ class TestTaskService:
     async def test_get_by_id_missing_returns_none(self, db_session):
         svc = TaskService(db_session)
         assert await svc.get_by_id(99999) is None
+
+    async def test_reorder_assigns_indexes_per_calendar(self, db_session):
+        # sort_order is a per-calendar sequence: a merged drag payload must
+        # number each calendar's tasks by their relative order, not by global
+        # position.
+        user = await make_user(db_session, username="u1")
+        cal_a = await make_calendar(db_session, user.id, name="A")
+        cal_b = await make_calendar(db_session, user.id, name="B")
+        a1 = await make_task(db_session, cal_a.id, summary="a1", sort_order=0)
+        a2 = await make_task(db_session, cal_a.id, summary="a2", sort_order=1)
+        a3 = await make_task(db_session, cal_a.id, summary="a3", sort_order=2)
+        b1 = await make_task(db_session, cal_b.id, summary="b1", sort_order=0)
+        b2 = await make_task(db_session, cal_b.id, summary="b2", sort_order=1)
+        svc = TaskService(db_session)
+
+        await svc.reorder([a2.id, b2.id, b1.id, a1.id, a3.id])
+
+        by_id = {t.id: t for t in [*await svc.get_by_calendar(cal_a.id),
+                                   *await svc.get_by_calendar(cal_b.id)]}
+        assert [by_id[a2.id].sort_order, by_id[a1.id].sort_order, by_id[a3.id].sort_order] == [0, 1, 2]
+        assert [by_id[b2.id].sort_order, by_id[b1.id].sort_order] == [0, 1]
+
+    async def test_create_task_with_related_to(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        parent = await make_task(db_session, cal.id, summary="parent", uid="p-1")
+        svc = TaskService(db_session)
+
+        child = await svc.create_task(cal.id, summary="child", related_to=parent.uid)
+
+        assert child.related_to == "p-1"
+        assert "RELATED-TO:p-1" in child.raw_ics
+
+    async def test_update_task_related_to(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        task = await make_task(db_session, cal.id, summary="t")
+        svc = TaskService(db_session)
+
+        updated = await svc.update_task(task.id, related_to="new-parent")
+        assert updated.related_to == "new-parent"
+        assert "RELATED-TO:new-parent" in updated.raw_ics
+
+        cleared = await svc.update_task(task.id, related_to=None)
+        assert cleared.related_to is None
+        assert "RELATED-TO" not in cleared.raw_ics
+
+    async def test_build_task_tree_nests_children(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        parent = await make_task(db_session, cal.id, summary="p", uid="p-1", sort_order=0)
+        c1 = await make_task(db_session, cal.id, summary="c1", uid="c-1",
+                             related_to="p-1", sort_order=1)
+        c2 = await make_task(db_session, cal.id, summary="c2", uid="c-2",
+                             related_to="p-1", sort_order=2)
+        orphan = await make_task(db_session, cal.id, summary="orphan", uid="o-1",
+                                 related_to="missing-uid", sort_order=3)
+        svc = TaskService(db_session)
+
+        tree = build_task_tree(await svc.get_tasks_for_user(user.id))
+
+        assert [t.id for t in tree] == [parent.id, orphan.id]
+        assert [c.id for c in tree[0].children] == [c1.id, c2.id]
+        assert tree[1].children == []
+
+    async def test_build_task_tree_cycle_falls_back_to_top_level(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        await make_task(db_session, cal.id, summary="a", uid="a-1", related_to="b-1")
+        await make_task(db_session, cal.id, summary="b", uid="b-1", related_to="a-1")
+        svc = TaskService(db_session)
+
+        tree = build_task_tree(await svc.get_tasks_for_user(user.id))
+
+        assert len(tree) == 2
+        assert all(t.children == [] for t in tree)
+
+    async def test_move_task_appends_to_bottom_of_target(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal_a = await make_calendar(db_session, user.id, name="A")
+        cal_b = await make_calendar(db_session, user.id, name="B")
+        b_existing = await make_task(db_session, cal_b.id, summary="b1", sort_order=0)
+        task = await make_task(db_session, cal_a.id, summary="mover",
+                               related_to="x-uid", sort_order=3)
+        svc = TaskService(db_session)
+
+        moved = await svc.move_task(task.id, cal_b.id)
+
+        assert moved.calendar_id == cal_b.id
+        assert moved.sort_order == 1
+        assert moved.uid == task.uid
+        assert moved.related_to == "x-uid"
+        in_b = await svc.get_by_calendar(cal_b.id)
+        assert [t.id for t in in_b] == [b_existing.id, moved.id]
+
+    async def test_move_task_missing_target_returns_none(self, db_session):
+        user = await make_user(db_session, username="u1")
+        cal = await make_calendar(db_session, user.id)
+        task = await make_task(db_session, cal.id, summary="t")
+        svc = TaskService(db_session)
+        assert await svc.move_task(task.id, 999999) is None

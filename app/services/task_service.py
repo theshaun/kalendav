@@ -57,6 +57,7 @@ class TaskService:
 
         result = await self.db.execute(
             select(Task)
+            .options(selectinload(Task.calendar))
             .where(Task.calendar_id.in_(list(set(calendar_ids))))
             .order_by(Task.sort_order.asc(), Task.created_at.asc())
         )
@@ -92,6 +93,7 @@ class TaskService:
         due: Optional[datetime] = None,
         priority: Optional[int] = None,
         status: TaskStatus | str = TaskStatus.NEEDS_ACTION,
+        related_to: Optional[str] = None,
         timezone: Optional[str] = None,
         uid: Optional[str] = None,
     ) -> Task:
@@ -116,6 +118,7 @@ class TaskService:
             priority=priority,
             due=due,
             percent_complete=None,
+            related_to=related_to,
             timezone=timezone,
         )
 
@@ -128,6 +131,7 @@ class TaskService:
             priority=priority,
             due=due,
             sort_order=sort_order,
+            related_to=related_to,
             raw_ics=raw_ics,
         )
         self.db.add(task)
@@ -152,6 +156,8 @@ class TaskService:
             task.completed = fields["completed"]
         if "percent_complete" in fields:
             task.percent_complete = fields["percent_complete"]
+        if "related_to" in fields:
+            task.related_to = fields["related_to"]
 
         if "status" in fields and fields["status"] is not None:
             new_status = fields["status"]
@@ -176,6 +182,7 @@ class TaskService:
             due=task.due,
             completed=task.completed,
             percent_complete=task.percent_complete,
+            related_to=task.related_to,
             timezone=None,
         )
 
@@ -192,6 +199,33 @@ class TaskService:
             return await self.update_task(task_id, status="NEEDS-ACTION")
         return await self.update_task(task_id, status="COMPLETED")
 
+    async def move_task(self, task_id: int, target_calendar_id: int) -> Optional[Task]:
+        """Move a task to another calendar, appending at its bottom.
+
+        Keeps uid and related_to; a relation pointing at the old calendar's
+        task renders top-level until re-parented. Returns None when the task
+        or target calendar does not exist.
+        """
+        task = await self.get_by_id(task_id)
+        if task is None:
+            return None
+        target = await self.db.execute(
+            select(Calendar.id).where(Calendar.id == target_calendar_id)
+        )
+        if target.scalar_one_or_none() is None:
+            return None
+        max_order = await self.db.execute(
+            select(func.coalesce(func.max(Task.sort_order), -1)).where(
+                Task.calendar_id == target_calendar_id
+            )
+        )
+        task.calendar_id = target_calendar_id
+        task.sort_order = max_order.scalar_one() + 1
+        task.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(task)
+        return task
+
     async def delete(self, task_id: int) -> bool:
         task = await self.get_by_id(task_id)
         if not task:
@@ -201,8 +235,113 @@ class TaskService:
         return True
 
     async def reorder(self, ordered_task_ids: list[int]) -> None:
-        for index, task_id in enumerate(ordered_task_ids):
+        # sort_order is a per-calendar sequence: number each task by its
+        # position among its own calendar's tasks in the submitted order.
+        next_index: dict[int, int] = {}
+        for task_id in ordered_task_ids:
             task = await self.get_by_id(task_id)
-            if task is not None:
-                task.sort_order = index
+            if task is None:
+                continue
+            task.sort_order = next_index.get(task.calendar_id, 0)
+            next_index[task.calendar_id] = task.sort_order + 1
         await self.db.commit()
+
+    async def apply_parents(self, parent_by_id: dict[int, int]) -> None:
+        """Set related_to from task-id -> parent-task-id (0/None = top-level).
+
+        Parent must live in the same calendar; foreign or missing parents
+        clear the relation. After applying, any task on a related_to cycle
+        has its own link broken so every member falls back to top-level.
+        """
+        if not parent_by_id:
+            return
+
+        result = await self.db.execute(select(Task).where(Task.id.in_(parent_by_id)))
+        touched = [t for t in result.scalars().all() if t is not None]
+        if not touched:
+            return
+
+        cal_ids = {t.calendar_id for t in touched}
+        result = await self.db.execute(
+            select(Task).where(Task.calendar_id.in_(cal_ids))
+        )
+        scope = list(result.scalars().all())
+        by_id = {t.id: t for t in scope}
+        by_uid: dict[tuple[int, str], Task] = {}
+        for t in scope:
+            by_uid.setdefault((t.calendar_id, t.uid), t)
+
+        for task in touched:
+            parent_id = parent_by_id.get(task.id) or None
+            parent = by_id.get(parent_id) if parent_id else None
+            valid = parent is not None and parent is not task and parent.calendar_id == task.calendar_id
+            task.related_to = parent.uid if valid else None
+
+        def on_cycle(task: Task) -> bool:
+            seen: set[int] = set()
+            cur = task
+            while cur is not None and cur.related_to:
+                if cur.id in seen:
+                    return True
+                seen.add(cur.id)
+                cur = by_uid.get((cur.calendar_id, cur.related_to))
+            return False
+
+        for task in touched:
+            if on_cycle(task):
+                task.related_to = None
+
+        for task in touched:
+            task.raw_ics = generate_vtodo(
+                uid=task.uid,
+                summary=task.summary or "",
+                status=task.status,
+                description=task.description,
+                priority=task.priority,
+                due=task.due,
+                completed=task.completed,
+                percent_complete=task.percent_complete,
+                related_to=task.related_to,
+            )
+
+        await self.db.commit()
+
+
+def build_task_tree(tasks: Sequence[Task]) -> list[Task]:
+    """Attach ``children`` lists and return top-level tasks in order.
+
+    A task is a child when its ``related_to`` UID matches another task's UID
+    in the SAME calendar (UIDs are only unique per calendar). Tasks whose
+    parent is missing, foreign, or part of a cycle stay top-level.
+    """
+    for task in tasks:
+        task.children = []
+
+    by_uid: dict[tuple[int, str], list[Task]] = {}
+    for task in tasks:
+        by_uid.setdefault((task.calendar_id, task.uid), []).append(task)
+
+    top_level: list[Task] = []
+    placed: set[int] = set()
+
+    def attach(task: Task, path: frozenset[int]) -> bool:
+        # True => task ended up as someone's descendant (or already placed);
+        # False => task must stay top-level (missing parent or cycle).
+        if task.id in placed:
+            return True
+        if task.id in path:
+            return False
+        if task.related_to:
+            for candidate in by_uid.get((task.calendar_id, task.related_to), []):
+                if candidate is not task and attach(candidate, path | {task.id}):
+                    candidate.children.append(task)
+                    placed.add(task.id)
+                    return True
+        placed.add(task.id)
+        top_level.append(task)
+        return False
+
+    for task in tasks:
+        attach(task, frozenset())
+
+    return top_level

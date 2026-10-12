@@ -31,6 +31,9 @@ function renderIcons() {
 
 document.addEventListener('DOMContentLoaded', renderIcons);
 document.body.addEventListener('htmx:afterSwap', renderIcons);
+// Inline scripts (task drag reorder) inject data-lucide icons without an
+// htmx swap; they need manual access to the icon renderer.
+window.renderLucideIcons = renderIcons;
 
 // ---------------------------------------------------------------------------
 // Dark mode toggle. The FOUC buster in <head> sets the initial class before

@@ -429,6 +429,7 @@ _VTODO_EMPTY: Dict = {
     "due": None,
     "completed": None,
     "percent_complete": None,
+    "related_to": None,
 }
 
 
@@ -502,6 +503,18 @@ def parse_vtodo(ics_content: str) -> Dict:
         except (TypeError, ValueError):
             percent_complete = None
 
+    # Only PARENT relations (the default RELTYPE) map to the column — they
+    # drive the web subtask hierarchy. Sibling/child links stay in raw_ics.
+    related_to: Optional[str] = None
+    raw_related = component.get("related-to")
+    if raw_related is not None:
+        props = raw_related if isinstance(raw_related, list) else [raw_related]
+        for prop in props:
+            reltype = str(prop.params.get("RELTYPE", "PARENT")).upper()
+            if reltype == "PARENT" and str(prop):
+                related_to = str(prop)
+                break
+
     return {
         "uid": uid,
         "summary": summary,
@@ -511,6 +524,7 @@ def parse_vtodo(ics_content: str) -> Dict:
         "due": due,
         "completed": completed,
         "percent_complete": percent_complete,
+        "related_to": related_to,
     }
 
 
@@ -523,6 +537,7 @@ def generate_vtodo(
     due: Optional[datetime] = None,
     completed: Optional[datetime] = None,
     percent_complete: Optional[int] = None,
+    related_to: Optional[str] = None,
     timezone: Optional[str] = None,
 ) -> str:
     effective_tz = timezone or settings.default_timezone
@@ -550,6 +565,8 @@ def generate_vtodo(
         todo.add("completed", completed)
     if percent_complete is not None:
         todo.add("percent-complete", percent_complete)
+    if related_to:
+        todo.add("related-to", related_to)
 
     cal.add_component(todo)
     return cal.to_ical().decode("utf-8")

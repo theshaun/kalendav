@@ -78,6 +78,29 @@
       </select>
     </div>
 
+    <div class="md:w-56">
+      <label for="task-parent" class="block text-body-sm font-medium text-text-primary mb-1">
+        Subtask of <span class="text-text-tertiary font-normal">(optional)</span>
+      </label>
+      <select
+        name="related_to"
+        id="task-parent"
+        class="w-full h-9 px-3 rounded-md bg-canvas border border-border-input text-text-primary text-body-sm focus:border-border-focus focus-visible:shadow-focus focus-visible:outline-none transition-colors duration-instant ease-out"
+      >
+        <option value="">—</option>
+        {% for cal in calendars %}
+        {% set cal_parents = parent_candidates | selectattr('calendar_id', 'equalto', cal.id) | list | rejectattr('uid', 'none') | list %}
+        {% if cal_parents %}
+        <optgroup label="{{ cal.name }}" data-calendar-id="{{ cal.id }}">
+          {% for pt in cal_parents %}
+          <option value="{{ pt.uid }}" data-calendar-id="{{ cal.id }}">{{ pt.summary or pt.uid }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
     <button
       type="submit"
       class="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-accent-600 dark:bg-accent-500 hover:bg-accent-700 dark:hover:bg-accent-600 active:scale-[0.98] text-white font-medium text-body-sm transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none"
@@ -105,67 +128,260 @@
    /admin/tasks/reorder; on failure we reload the page to revert to the
    persisted sort_order. Visual feedback is opacity-only (instant, no
    transition) so prefers-reduced-motion users see no motion. #}
-<script type="module">
-  (function wireTaskDragReorder() {
-    var draggedRow = null;
+  <style>
+  .task-row.drop-before { box-shadow: inset 0 2px 0 0 var(--color-accent-500); }
+  .task-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--color-accent-500); }
+  .task-row.drop-onto { box-shadow: inset 0 0 0 2px var(--color-accent-500); }
+  .cal-group-header.drop-onto { box-shadow: inset 0 0 0 2px var(--color-accent-500); background-color: var(--color-accent-50); }
+  </style>
 
-    function taskRow(target) {
-      var list = document.getElementById('task-list');
-      if (!list || !list.contains(target)) return null;
-      return target.closest ? target.closest('[data-task-id]') : null;
+<script type="module">
+  (function wireParentTaskFilter() {
+    var calSelect = document.getElementById('task-calendar');
+    var parentSelect = document.getElementById('task-parent');
+    if (!calSelect || !parentSelect) return;
+
+    function syncParentOptions() {
+      var calId = calSelect.value;
+      var current = parentSelect.value;
+      var groups = parentSelect.querySelectorAll('optgroup');
+      groups.forEach(function (g) {
+        g.hidden = g.getAttribute('data-calendar-id') !== calId;
+      });
+      parentSelect.querySelectorAll('option[data-calendar-id]').forEach(function (o) {
+        o.disabled = o.getAttribute('data-calendar-id') !== calId;
+      });
+      var selected = parentSelect.querySelector('option[value="' + current + '"]');
+      if (!selected || selected.disabled) parentSelect.value = '';
     }
 
-    document.addEventListener('dragstart', function (e) {
-      var row = taskRow(e.target);
-      if (!row) return;
-      draggedRow = row;
-      try { e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
-      row.classList.add('opacity-50');
-    });
+    calSelect.addEventListener('change', syncParentOptions);
+    syncParentOptions();
+  })();
 
-    document.addEventListener('dragend', function (e) {
-      var row = taskRow(e.target);
-      if (row) row.classList.remove('opacity-50');
-      draggedRow = null;
-    });
+  // Pointer-events drag: native HTML5 DnD is NOT used — on some Windows
+  // Chrome setups the native drag session never closes (dragstart fires,
+  // dragend never does; all input stays consumed until the cursor leaves the
+  // tab). Pointer events have no session to wedge. Zones/hints/nesting are
+  // identical: line above/below = reorder as top-level sibling, ring = nest.
+  (function wireTaskDragReorder() {
+    var dragRow = null;
+    var startY = 0;
+    var startX = 0;
+    var dragging = false;
+    var hintClass = { before: 'drop-before', after: 'drop-after', onto: 'drop-onto' };
 
-    document.addEventListener('dragover', function (e) {
-      if (!draggedRow) return;
+    var dbg = function () {
+      try { console.log.apply(console, ['DRAGDBG'].concat([].slice.call(arguments))); } catch (_) {}
+    };
+
+    function rowAt(x, y) {
+      var el = document.elementFromPoint(x, y);
+      if (!el || !document.getElementById('task-list')) return null;
       var list = document.getElementById('task-list');
-      if (!list) return;
-      var target = taskRow(e.target);
-      if (!target || target === draggedRow) return;
-      e.preventDefault();
-      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      if (!list.contains(el)) return null;
+      return el.closest ? el.closest('[data-task-id]') : null;
+    }
+
+    function headerAt(x, y) {
+      var el = document.elementFromPoint(x, y);
+      if (!el || !document.getElementById('task-list')) return null;
+      var list = document.getElementById('task-list');
+      if (!list.contains(el)) return null;
+      var h = el.closest ? el.closest('[data-cal-header]') : null;
+      if (!h || h.getAttribute('data-writable') !== '1') return null;
+      if (h.getAttribute('data-cal-header') === dragRow.getAttribute('data-calendar-id')) return null;
+      return h;
+    }
+
+    function sameCalendar(a, b) {
+      return a && b && a.getAttribute('data-calendar-id') === b.getAttribute('data-calendar-id');
+    }
+
+    function clearDropHints() {
+      document.querySelectorAll('#task-list .task-row').forEach(function (r) {
+        r.classList.remove('drop-before', 'drop-after', 'drop-onto');
+      });
+    }
+
+    function zone(target, x, y) {
       var rect = target.getBoundingClientRect();
-      var after = (e.clientY - rect.top) > rect.height / 2;
-      if (after) {
-        if (target.nextSibling !== draggedRow) list.insertBefore(draggedRow, target.nextSibling);
-      } else {
-        if (target !== draggedRow.nextSibling) list.insertBefore(draggedRow, target);
+      if (y - rect.top < rect.height * 0.3) return 'before';
+      if (y - rect.top > rect.height * 0.7) return 'after';
+      return 'onto';
+    }
+
+    function isInteractive(target) {
+      return !!(target.closest && target.closest('input, button, a, form, label, select, option'));
+    }
+
+    document.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      var row = e.target.closest ? e.target.closest('[data-task-id]') : null;
+      if (!row || !row.getAttribute('data-writable') || isInteractive(e.target)) return;
+      dragRow = row;
+      dragging = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      dbg('pointerdown', row.getAttribute('data-task-id'));
+    });
+
+    document.addEventListener('pointermove', function (e) {
+      if (!dragRow) return;
+      if (!dragging) {
+        if (Math.abs(e.clientX - startX) < 6 && Math.abs(e.clientY - startY) < 6) return;
+        dragging = true;
+        dbg('drag begins', dragRow.getAttribute('data-task-id'));
+        e.preventDefault();
+        document.body.classList.add('select-none');
+        dragRow.classList.add('opacity-50');
+      }
+      e.preventDefault();
+      clearDropHints();
+      document.querySelectorAll('#task-list .cal-group-header.drop-onto').forEach(function (h) {
+        h.classList.remove('drop-onto');
+      });
+      var header = headerAt(e.clientX, e.clientY);
+      if (header) {
+        header.classList.add('drop-onto');
+        return;
+      }
+      var target = rowAt(e.clientX, e.clientY);
+      if (target && target !== dragRow && sameCalendar(target, dragRow)) {
+        target.classList.add(hintClass[zone(target, e.clientX, e.clientY)]);
       }
     });
 
-    document.addEventListener('drop', async function (e) {
-      if (!draggedRow) return;
+    function endDrag(apply) {
+      if (!dragRow) return;
+      var row = dragRow;
+      dbg('endDrag', 'dragging=' + dragging, 'apply=' + !!apply);
+      var plan = null;
+      var moveHeader = null;
+      if (apply && dragging) {
+        var sel = window.getSelection();
+        if (sel && sel.removeAllRanges) sel.removeAllRanges();
+        moveHeader = headerAt(row._lastX || 0, row._lastY || 0);
+        if (!moveHeader) {
+          var target = row._lastTarget;
+          if (target && target !== row && sameCalendar(target, row)
+              && document.getElementById('task-list').contains(target)) {
+            plan = { row: row, target: target, zone: row._lastZone };
+          }
+        }
+      }
+      row.classList.remove('opacity-50');
+      row._lastTarget = null;
+      row._lastZone = null;
+      row._lastX = null;
+      row._lastY = null;
+      dragRow = null;
+      dragging = false;
+      document.body.classList.remove('select-none');
+      clearDropHints();
+      document.querySelectorAll('#task-list .cal-group-header.drop-onto').forEach(function (h) {
+        h.classList.remove('drop-onto');
+      });
+      if (moveHeader) {
+        moveTaskTo(row.getAttribute('data-task-id'), moveHeader.getAttribute('data-cal-header'));
+      } else if (plan) {
+        applyDrop(plan);
+      }
+    }
+
+    async function moveTaskTo(taskId, calendarId) {
+      dbg('move', taskId, '->', calendarId);
+      try {
+        var res = await fetch('/admin/tasks/' + taskId + '/move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ calendar_id: parseInt(calendarId, 10) }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        htmx.ajax('GET', window.location.pathname + window.location.search, {
+          target: '#task-list',
+          swap: 'outerHTML',
+          select: '#task-list',
+        });
+      } catch (err) {
+        dbg('move failed', String(err));
+        window.location.reload();
+      }
+    }
+
+    document.addEventListener('pointerup', function (e) {
+      if (!dragRow) return;
+      if (dragging) {
+        dragRow._lastX = e.clientX;
+        dragRow._lastY = e.clientY;
+        dragRow._lastTarget = rowAt(e.clientX, e.clientY);
+        dragRow._lastZone = dragRow._lastTarget ? zone(dragRow._lastTarget, e.clientX, e.clientY) : null;
+      }
+      endDrag(true);
+    });
+
+    document.addEventListener('pointercancel', function () { endDrag(false); });
+
+    function nestUnder(parentRow, row) {
+      parentRow.after(row);
+      row.setAttribute('data-child', '1');
+      row.classList.remove('px-4');
+      row.classList.add('pl-10');
+      if (!row.querySelector('[data-lucide="corner-down-right"], svg.lucide-corner-down-right')) {
+        var icon = document.createElement('i');
+        icon.setAttribute('data-lucide', 'corner-down-right');
+        icon.className = 'h-3.5 w-3.5 text-text-tertiary shrink-0';
+        icon.setAttribute('aria-hidden', 'true');
+        var summary = row.querySelector('span.flex-1');
+        row.insertBefore(icon, summary);
+        if (window.renderLucideIcons) window.renderLucideIcons();
+      }
+    }
+
+    function unnest(row) {
+      row.removeAttribute('data-child');
+      row.classList.remove('pl-10');
+      row.classList.add('px-4');
+      var arrow = row.querySelector('[data-lucide="corner-down-right"], svg.lucide-corner-down-right');
+      if (arrow) arrow.remove();
+    }
+
+    async function applyDrop(plan) {
       var list = document.getElementById('task-list');
-      if (!list) return;
-      e.preventDefault();
+      if (!list || !list.contains(plan.row)) return;
+      var row = plan.row;
+      var draggedId = row.getAttribute('data-task-id');
+      var wasChild = row.hasAttribute('data-child');
+      var parents = {};
+
+      if (plan.zone === 'onto') {
+        nestUnder(plan.target, row);
+        parents[draggedId] = plan.target.getAttribute('data-task-id');
+      } else {
+        if (plan.zone === 'after') plan.target.after(row);
+        else plan.target.before(row);
+        // Only mention the relation when it changes: a top-level task
+        // staying top-level needs no parent entry.
+        if (wasChild) {
+          unnest(row);
+          parents[draggedId] = 0;
+        }
+      }
+
       var ids = Array.from(list.querySelectorAll('[data-task-id]'))
         .map(function (r) { return r.getAttribute('data-task-id'); });
-      draggedRow = null;
       try {
         var res = await fetch('/admin/tasks/reorder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: ids }),
+          body: JSON.stringify({ ids: ids, parents: parents }),
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
       } catch (err) {
         // Revert to persisted order on any failure.
         window.location.reload();
       }
-    });
+    }
   })();
 </script>
 {% endblock %}

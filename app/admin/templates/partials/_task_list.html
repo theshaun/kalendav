@@ -1,58 +1,104 @@
 {# Shared <ul id="task-list">. Rendered both by tasks.html (initial paint) and by
    every POST/DELETE mutation handler as the HTMX swap target, so the markup
    contract is identical on first paint and after each swap. Border-only depth
-   treatment per DESIGN.md §2/§12 (no shadow on dark surfaces). #}
-<ul id="task-list" class="bg-surface rounded-lg border border-border-default divide-y divide-border-subtle overflow-hidden">
-  {% for t in tasks %}
-  <li
-    class="task-row flex items-center gap-3 px-4 py-3 transition-colors duration-instant ease-out hover:bg-hover focus-within:bg-hover{% if t.status == 'COMPLETED' %} opacity-60{% endif %}"
-    data-task-id="{{ t.id }}"
-    draggable="true"
+   treatment per DESIGN.md §2/§12 (no shadow on dark surfaces).
+
+   `groups` pairs each calendar with its task tree (top-level tasks carrying
+   .children lists of RELATED-TO subtasks); empty writable calendars render a
+   header too so drag-to-move always has a target. #}
+{% macro task_row(t, is_child) %}
+{% set writable = t.calendar_id in writable_calendar_ids %}
+<li
+  class="task-row flex items-center gap-3 {% if is_child %}pl-10{% else %}px-4{% endif %} py-3 transition-colors duration-instant ease-out hover:bg-hover focus-within:bg-hover{% if t.status == 'COMPLETED' %} opacity-60{% endif %}{% if writable %} cursor-grab active:cursor-grabbing{% endif %}"
+  data-task-id="{{ t.id }}"
+  data-calendar-id="{{ t.calendar_id }}"
+  {% if writable %}data-writable="1"{% endif %}
+  {% if is_child %}data-child="1"{% endif %}
+>
+  {% if writable %}
+  <form
+    hx-post="/admin/tasks/{{ t.id }}/toggle"
+    hx-target="#task-list"
+    hx-swap="outerHTML"
+    class="inline"
   >
-    <form
-      hx-post="/admin/tasks/{{ t.id }}/toggle"
-      hx-target="#task-list"
-      hx-swap="outerHTML"
-      class="inline"
+    <input
+      type="checkbox"
+      {% if t.status == "COMPLETED" %}checked{% endif %}
+      onchange="this.form.requestSubmit()"
+      class="h-4 w-4 rounded border-border-input text-accent-600 dark:text-accent-400 focus-visible:shadow-focus focus-visible:outline-none cursor-pointer"
+      aria-label="Toggle complete for {{ t.summary or 'task' }}"
     >
-      <input
-        type="checkbox"
-        {% if t.status == "COMPLETED" %}checked{% endif %}
-        onchange="this.form.requestSubmit()"
-        class="h-4 w-4 rounded border-border-input text-accent-600 dark:text-accent-400 focus-visible:shadow-focus focus-visible:outline-none cursor-pointer"
-        aria-label="Toggle complete for {{ t.summary or 'task' }}"
-      >
-    </form>
+  </form>
+  {% else %}
+  <input
+    type="checkbox"
+    {% if t.status == "COMPLETED" %}checked{% endif %}
+    disabled
+    class="h-4 w-4 rounded border-border-input text-text-tertiary cursor-not-allowed"
+    aria-label="Read-only task"
+    title="Read-only calendar"
+  >
+  {% endif %}
 
-    <span class="flex-1 min-w-0 truncate text-body-sm {% if t.status == 'COMPLETED' %}line-through text-text-tertiary{% else %}text-text-primary{% endif %}">
-      {{ t.summary or '(no summary)' }}
-    </span>
+  {% if is_child %}
+  <i data-lucide="corner-down-right" class="h-3.5 w-3.5 text-text-tertiary shrink-0" aria-hidden="true"></i>
+  {% endif %}
 
-    {% if t.due %}
-    <span class="hidden sm:inline-flex items-center gap-1 text-label text-text-tertiary tabular-nums shrink-0">
-      <i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i>
-      {{ t.due.strftime('%Y-%m-%d') }}
-    </span>
-    {% endif %}
+  <span class="flex-1 min-w-0 truncate text-body-sm {% if t.status == 'COMPLETED' %}line-through text-text-tertiary{% else %}text-text-primary{% endif %}">
+    {{ t.summary or '(no summary)' }}
+  </span>
 
-    {% if t.priority is not none %}
-    <span class="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 h-5 rounded-full bg-elevated text-label text-text-secondary tabular-nums shrink-0" title="Priority">
-      {{ t.priority }}
-    </span>
-    {% endif %}
+  {% if t.due %}
+  <span class="hidden sm:inline-flex items-center gap-1 text-label text-text-tertiary tabular-nums shrink-0">
+    <i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i>
+    {{ t.due.strftime('%Y-%m-%d') }}
+  </span>
+  {% endif %}
 
-    <button
-      type="button"
-      hx-delete="/admin/tasks/{{ t.id }}"
-      hx-target="#task-list"
-      hx-swap="outerHTML"
-      hx-confirm="Delete this task?"
-      class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-tertiary hover:text-danger hover:bg-danger-bg active:scale-[0.98] transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none shrink-0"
-      aria-label="Delete task {{ t.summary or '' }}"
-    >
-      <i data-lucide="trash-2" class="h-4 w-4"></i>
-    </button>
+  {% if t.priority is not none %}
+  <span class="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 h-5 rounded-full bg-elevated text-label text-text-secondary tabular-nums shrink-0" title="Priority">
+    {{ t.priority }}
+  </span>
+  {% endif %}
+
+  {% if writable %}
+  <button
+    type="button"
+    hx-delete="/admin/tasks/{{ t.id }}"
+    hx-target="#task-list"
+    hx-swap="outerHTML"
+    hx-confirm="Delete this task?"
+    class="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-tertiary hover:text-danger hover:bg-danger-bg active:scale-[0.98] transition-colors duration-instant ease-out focus-visible:shadow-focus focus-visible:outline-none shrink-0"
+    aria-label="Delete task {{ t.summary or '' }}"
+  >
+    <i data-lucide="trash-2" class="h-4 w-4"></i>
+  </button>
+  {% else %}
+  <span class="inline-flex items-center justify-center h-8 w-8 shrink-0" title="Read-only calendar">
+    <i data-lucide="lock" class="h-3.5 w-3.5 text-text-tertiary"></i>
+  </span>
+  {% endif %}
+</li>
+{% for child in t.children %}
+{{ task_row(child, true) }}
+{% endfor %}
+{% endmacro %}
+
+<ul id="task-list" class="bg-surface rounded-lg border border-border-default divide-y divide-border-subtle overflow-hidden">
+  {% for g in groups %}
+  <li
+    class="cal-group-header flex items-center gap-2 px-4 py-2 bg-canvas/50"
+    data-cal-header="{{ g.calendar.id }}"
+    {% if g.calendar.id in writable_calendar_ids %}data-writable="1"{% endif %}
+  >
+    <span class="inline-block h-2.5 w-2.5 rounded-full shrink-0" style="background-color: {{ g.calendar.color or '#3B82F6' }}" aria-hidden="true"></span>
+    <span class="text-label font-medium uppercase tracking-wide text-text-tertiary truncate">{{ g.calendar.name }}</span>
+    <span class="ml-auto text-label text-text-tertiary tabular-nums shrink-0">{{ g.tasks|length }}</span>
   </li>
+  {% for t in g.tasks %}
+  {{ task_row(t, false) }}
+  {% endfor %}
   {% else %}
   {# Empty state per DESIGN.md §5: Lucide icon 32px in text-text-tertiary,
      headline text-h3, body text-body-sm in text-text-secondary. #}

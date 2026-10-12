@@ -948,3 +948,63 @@ async def test_report_non_calendar_query_unchanged(client, db_session):
     uids = _response_uids(root)
     assert "evt-1" in uids
     assert "todo-1" not in uids, "non-calendar-query path must surface no tasks"
+
+
+@pytest.mark.asyncio
+async def test_put_vtodo_with_related_to_roundtrip(client, db_session):
+    user = await make_user(db_session, username="t-rel", password="pw")
+    cal = await make_calendar(db_session, user.id, name="C")
+
+    parent_body = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VTODO\r\n"
+        "UID:parent-rt\r\n"
+        "DTSTAMP:20260101T000000Z\r\n"
+        "SUMMARY:Parent\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    resp = await client.put(
+        f"/dav/t-rel/calendars/{cal.id}/parent-rt.ics",
+        headers=basic_auth_header("t-rel", "pw"), content=parent_body,
+    )
+    assert resp.status_code == 201
+
+    child_body = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VTODO\r\n"
+        "UID:child-rt\r\n"
+        "DTSTAMP:20260101T000000Z\r\n"
+        "SUMMARY:Child\r\n"
+        "RELATED-TO:parent-rt\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    resp = await client.put(
+        f"/dav/t-rel/calendars/{cal.id}/child-rt.ics",
+        headers=basic_auth_header("t-rel", "pw"), content=child_body,
+    )
+    assert resp.status_code == 201
+
+    row = (await db_session.execute(
+        select(Task).where(Task.uid == "child-rt")
+    )).scalar_one()
+    assert row.related_to == "parent-rt"
+
+    got = await client.get(
+        f"/dav/t-rel/calendars/{cal.id}/child-rt.ics",
+        headers=basic_auth_header("t-rel", "pw"),
+    )
+    assert got.status_code == 200
+    assert "RELATED-TO:parent-rt" in got.text
+
+    cleared = child_body.replace(b"RELATED-TO:parent-rt\r\n", b"")
+    resp = await client.put(
+        f"/dav/t-rel/calendars/{cal.id}/child-rt.ics",
+        headers=basic_auth_header("t-rel", "pw"), content=cleared,
+    )
+    assert resp.status_code == 201
+    await db_session.refresh(row)
+    assert row.related_to is None

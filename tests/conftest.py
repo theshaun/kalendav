@@ -189,6 +189,7 @@ async def make_task(db, calendar_id, **kw):
     completed = kw.get("completed")
     percent_complete = kw.get("percent_complete")
     sort_order = kw.get("sort_order", 0)
+    related_to = kw.get("related_to")
     description = kw.get("description")
     raw_ics = kw.get("raw_ics")
     if raw_ics is None:
@@ -201,7 +202,8 @@ async def make_task(db, calendar_id, **kw):
             "DTSTAMP:20260101T000000Z\n"
             f"SUMMARY:{summary or ''}\n"
             f"STATUS:{status}\n"
-            "END:VTODO\n"
+            + (f"RELATED-TO:{related_to}\n" if related_to else "")
+            + "END:VTODO\n"
             "END:VCALENDAR"
         )
     task = Task(
@@ -215,6 +217,7 @@ async def make_task(db, calendar_id, **kw):
         completed=completed,
         percent_complete=percent_complete,
         sort_order=sort_order,
+        related_to=related_to,
         raw_ics=raw_ics,
     )
     db.add(task)

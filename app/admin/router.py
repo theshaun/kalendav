@@ -17,13 +17,13 @@ from app.auth.basic import generate_api_key, hash_api_key
 from app.auth.session_deps import get_current_user_session, get_current_user_session_optional
 from app.auth.session import set_session_cookie, clear_session_cookie
 from app.services.event_service import EventService
-from app.services.task_service import TaskService
+from app.services.task_service import TaskService, build_task_tree
 from app.caldav.ics_parser import build_rrule, parse_ics_bulk, generate_calendar_ics
 from app.config import settings, get_base_uri
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, timedelta, timezone
 import json
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 from zoneinfo import ZoneInfo
 
 from app.admin.template_filters import register_template_filters
@@ -1628,6 +1628,24 @@ def _parse_task_due(due: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _task_groups(tree: list, writable_calendars: Sequence[Calendar]) -> list:
+    """Group a task tree per calendar, then append empty writable calendars
+    so every move target renders a header even with no tasks."""
+    groups: list[dict] = []
+    by_cal: dict[int, dict] = {}
+    for t in tree:
+        g = by_cal.get(t.calendar_id)
+        if g is None:
+            g = {"calendar": t.calendar, "tasks": []}
+            by_cal[t.calendar_id] = g
+            groups.append(g)
+        g["tasks"].append(t)
+    for cal in writable_calendars:
+        if cal.id not in by_cal:
+            groups.append({"calendar": cal, "tasks": []})
+    return groups
+
+
 async def _render_task_list(db: AsyncSession, user: User, request: Request) -> HTMLResponse:
     """Re-query the user's tasks and render the shared partial.
 
@@ -1636,9 +1654,18 @@ async def _render_task_list(db: AsyncSession, user: User, request: Request) -> H
     """
     task_service = TaskService(db)
     tasks = await task_service.get_tasks_for_user(user.id)
+    writable_ids = await EventService(db).get_writable_calendars(user.id)
+    result = await db.execute(select(Calendar).where(Calendar.id.in_(writable_ids)))
+    writable_calendars = list(result.scalars().all())
+    tree = build_task_tree(tasks)
     return templates.TemplateResponse(
         "partials/_task_list.html",
-        {"request": request, "user": user, "tasks": tasks},
+        {
+            "request": request,
+            "user": user,
+            "groups": _task_groups(tree, writable_calendars),
+            "writable_calendar_ids": writable_ids,
+        },
     )
 
 
@@ -1654,20 +1681,27 @@ async def task_manager(
 
     event_service = EventService(db)
     writable_ids = await event_service.get_writable_calendars(user.id)
+    accessible_ids = await event_service.get_user_accessible_calendars(user.id)
     result = await db.execute(select(Calendar).where(Calendar.id.in_(writable_ids)))
     writable_calendars = list(result.scalars().all())
 
-    if calendar is not None and calendar in writable_ids:
+    # Deep links may target any accessible calendar (view), including
+    # read-only shares; only the add form is restricted to writable ones.
+    if calendar is not None and calendar in accessible_ids:
         tasks = [t for t in tasks if t.calendar_id == calendar]
     else:
         calendar = None
+
+    writable_tasks = [t for t in tasks if t.calendar_id in writable_ids]
+    tree = build_task_tree(tasks)
 
     return templates.TemplateResponse(
         "tasks.html",
         {
             "request": request,
             "user": user,
-            "tasks": tasks,
+            "groups": _task_groups(tree, writable_calendars),
+            "parent_candidates": writable_tasks,
             "calendars": writable_calendars,
             "writable_calendar_ids": writable_ids,
             "selected_calendar_id": calendar,
@@ -1682,6 +1716,7 @@ async def create_task(
     summary: str = Form(...),
     due: Optional[str] = Form(None),
     priority: Optional[int] = Form(None),
+    related_to: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user_session),
 ):
@@ -1696,6 +1731,7 @@ async def create_task(
         summary=summary,
         due=_parse_task_due(due),
         priority=priority,
+        related_to=(related_to or "").strip() or None,
     )
 
     response = await _render_task_list(db, user, request)
@@ -1731,6 +1767,32 @@ async def delete_task(
     return await _render_task_list(db, user, request)
 
 
+@router.post("/tasks/{task_id}/move", response_class=JSONResponse)
+async def move_task(
+    task_id: int,
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user_session),
+):
+    try:
+        target_id = int(payload.get("calendar_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="calendar_id must be an integer")
+
+    task_service = TaskService(db)
+    if not await task_service.can_edit_task(task_id, user.id):
+        raise HTTPException(status_code=403, detail="Cannot move this task")
+
+    writable_ids = await EventService(db).get_writable_calendars(user.id)
+    if target_id not in writable_ids:
+        raise HTTPException(status_code=403, detail="Cannot move task to that calendar")
+
+    moved = await task_service.move_task(task_id, target_id)
+    if moved is None:
+        raise HTTPException(status_code=404, detail="Task or calendar not found")
+    return JSONResponse(content={"ok": True})
+
+
 @router.post("/tasks/reorder", response_class=JSONResponse)
 async def reorder_tasks(
     payload: dict = Body(...),
@@ -1752,5 +1814,20 @@ async def reorder_tasks(
     for task_id in ids:
         if not await task_service.can_edit_task(task_id, user.id):
             raise HTTPException(status_code=403, detail="Cannot reorder one or more tasks")
+
+    raw_parents = payload.get("parents")
+    parents: dict[int, int] = {}
+    if isinstance(raw_parents, dict):
+        for raw_child, raw_parent in raw_parents.items():
+            try:
+                child_id = int(raw_child)
+                parent_id = int(raw_parent)
+            except (TypeError, ValueError):
+                continue
+            child = await task_service.get_by_id(child_id)
+            if child is not None and await task_service.can_edit_task(child_id, user.id):
+                parents[child_id] = parent_id
+
     await task_service.reorder(ids)
+    await task_service.apply_parents(parents)
     return JSONResponse(content={"ok": True})

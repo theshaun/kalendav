@@ -588,6 +588,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
             existing_task.due = parsed.get("due")
             existing_task.completed = parsed.get("completed")
             existing_task.percent_complete = parsed.get("percent_complete")
+            existing_task.related_to = parsed.get("related_to")
             existing_task.raw_ics = generate_vtodo(
                 uid=existing_task.uid,
                 summary=existing_task.summary or "",
@@ -597,6 +598,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
                 due=existing_task.due,
                 completed=existing_task.completed,
                 percent_complete=existing_task.percent_complete,
+                related_to=existing_task.related_to,
             )
             existing_task.updated_at = datetime.utcnow()
             task = existing_task
@@ -610,6 +612,7 @@ async def handle_put(path_parts: list, body: bytes, user: User, db: AsyncSession
                 due=parsed.get("due"),
                 priority=parsed.get("priority"),
                 status=parsed.get("status") or "NEEDS-ACTION",
+                related_to=parsed.get("related_to"),
                 uid=task_uid,
             )
 

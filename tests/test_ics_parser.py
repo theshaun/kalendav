@@ -1011,3 +1011,47 @@ END:VTODO
 END:VCALENDAR
 """
     assert detect_component(ics) == "VTODO"
+
+
+def test_parse_vtodo_related_to():
+    ics = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VTODO\r\n"
+        "UID:child-1\r\n"
+        "DTSTAMP:20260101T000000Z\r\n"
+        "SUMMARY:Child task\r\n"
+        "RELATED-TO:parent-uid\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    parsed = parse_vtodo(ics)
+    assert parsed["related_to"] == "parent-uid"
+
+
+def test_parse_vtodo_related_to_respects_reltype():
+    explicit_parent = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VTODO\r\n"
+        "UID:c\r\n"
+        "DTSTAMP:20260101T000000Z\r\n"
+        "RELATED-TO;RELTYPE=PARENT:parent-uid\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    assert parse_vtodo(explicit_parent)["related_to"] == "parent-uid"
+
+    sibling = explicit_parent.replace("RELTYPE=PARENT", "RELTYPE=SIBLING")
+    assert parse_vtodo(sibling)["related_to"] is None
+
+
+def test_generate_vtodo_related_to_roundtrip():
+    ics = generate_vtodo(uid="child-1", summary="Child", related_to="parent-uid")
+    assert "RELATED-TO:parent-uid" in ics
+    parsed = parse_vtodo(ics)
+    assert parsed["related_to"] == "parent-uid"
+
+    no_parent = generate_vtodo(uid="c2", summary="Solo")
+    assert "RELATED-TO" not in no_parent
+    assert parse_vtodo(no_parent)["related_to"] is None
